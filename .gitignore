@@ -1,4 +1,5 @@
 bin
 bin_linux
+bin_linux_static
 .envrc.local
 temp

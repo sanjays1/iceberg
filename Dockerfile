@@ -9,10 +9,10 @@ COPY . .
 
 RUN make tidy
 
-RUN make bin_linux/iceberg
+RUN make bin_linux_static/iceberg
 
 # final stage
 FROM gcr.io/distroless/base:latest
-COPY --from=builder /src/bin_linux/iceberg /bin/iceberg
+COPY --from=builder /src/bin_linux_static/iceberg /bin/iceberg
 ENTRYPOINT ["/bin/iceberg"]
 CMD ["--help"]

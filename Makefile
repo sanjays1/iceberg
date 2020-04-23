@@ -11,9 +11,7 @@ else
 GCFLAGS=-trimpath=$(shell go env GOPATH)/src
 endif
 
-ifeq ($(UNAME_S),Linux)
-	STATIC_LDFLAGS=-linkmode external -extldflags -static
-endif
+STATIC_LDFLAGS=-linkmode external -extldflags -static
 
 ICEBERG_LDFLAGS=-X main.gitBranch=$(shell git branch | grep \* | cut -d ' ' -f2) -X main.gitCommit=$(shell git rev-list -1 HEAD)
 
@@ -89,7 +87,10 @@ bin/iceberg: ## Build iceberg CLI for Darwin / amd64
 	go build -o bin/iceberg -gcflags="$(GCFLAGS)" -ldflags="$(LDFLAGS) $(ICEBERG_LDFLAGS)" github.com/deptofdefense/iceberg/cmd/iceberg
 
 bin_linux/iceberg: ## Build iceberg CLI for Linux / amd64
-	GOOS=linux GOARCH=amd64 go build -o bin_linux/iceberg -gcflags="$(GCFLAGS)" -ldflags="$(STATIC_LDFLAGS) $(ICEBERG_LDFLAGS)" github.com/deptofdefense/iceberg/cmd/iceberg
+	GOOS=linux GOARCH=amd64 go build -o bin_linux/iceberg -gcflags="$(GCFLAGS)" -ldflags="$(ICEBERG_LDFLAGS)" github.com/deptofdefense/iceberg/cmd/iceberg
+
+bin_linux_static/iceberg: ## Build iceberg CLI for Linux / amd64
+	GOOS=linux GOARCH=amd64 go build -o bin_linux_static/iceberg -gcflags="$(GCFLAGS)" -ldflags="$(STATIC_LDFLAGS) $(ICEBERG_LDFLAGS)" github.com/deptofdefense/iceberg/cmd/iceberg
 
 build: bin/iceberg
 

@@ -28,7 +28,10 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: false
       - run: make tidy
-      - run: make bin_linux/iceberg
+      - run: make bin_linux_static/iceberg
+      - store_artifacts:
+          path: bin_linux_static
+          destination: /
 
 workflows:
   version: 2
