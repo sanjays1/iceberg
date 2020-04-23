@@ -27,7 +27,6 @@ type User struct {
 }
 
 func (u *User) DistinguishedName() string {
-	//oidUserID := []int{0, 9, 2342, 19200300, 100, 1, 1}
 	terms := make([]string, 0)
 	for _, n := range u.Subject.Names {
 		if n.Type.Equal([]int{2, 5, 4, 6}) {

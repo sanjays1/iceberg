@@ -17,25 +17,33 @@ Install `direnv` with `brew install direnv`.  If using bash, then add `eval \"$(
 ## Usage
 
 ```
-timebucket is used to create histograms from temporal data.
+iceberg is a file server using client certificate authentication and policy-based access control.
 
 Usage:
-  timebucket [flags] -|FILE...
+  iceberg [flags] -|FILE...
 
 Flags:
-  -h, --help                   help for timebucket
-      --input-column string    input column
-      --input-format string    input format (default "csv")
-      --key-format string      hash key format
-      --layouts string         default layouts
-      --limit int              maximum number of records to process (default -1)
-      --output-format string   output format (default "csv")
+  -a, --addr string          listen address (default ":8080")
+  -f, --format string        format of the policy file (default "json")
+  -h, --help                 help for iceberg
+  -p, --policy string        path to the policy file.
+  -r, --root string          document root
+      --server-ca string     path to server ca
+      --server-cert string   path to server cert
+      --server-key string    path to server key
+  -t, --template string      template path
 ```
 
 ## Examples
 
 ```shell
-iceberg --root /var/www --policy /etc/iceberg/policy.json
+iceberg \
+--server-cert temp/server.crt \
+--server-key temp/server.key \
+--server-ca temp/AllCerts.p7b \
+--root examples/public \
+-t examples/conf/template.html \
+--policy examples/conf/example.json
 ```
 
 ## Contributing
