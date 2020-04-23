@@ -23,15 +23,16 @@ Usage:
   iceberg [flags] -|FILE...
 
 Flags:
-  -a, --addr string          listen address (default ":8080")
-  -f, --format string        format of the policy file (default "json")
-  -h, --help                 help for iceberg
-  -p, --policy string        path to the policy file.
-  -r, --root string          document root
-      --server-ca string     path to server ca
-      --server-cert string   path to server cert
-      --server-key string    path to server key
-  -t, --template string      template path
+  -a, --addr string               listen address (default ":8080")
+  -f, --format string             format of the policy file (default "json")
+  -h, --help                      help for iceberg
+  -p, --policy string             path to the policy file.
+  -r, --root string               document root
+      --server-ca string          path to server ca
+      --server-ca-format string   format of the server CA bundle, either pkcs7 or pem (default "pkcs7")
+      --server-cert string        path to server cert
+      --server-key string         path to server key
+  -t, --template string           template path
 ```
 
 ## Examples
