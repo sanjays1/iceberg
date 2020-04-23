@@ -2,8 +2,12 @@ package policy
 
 import (
 	"crypto/x509/pkix"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"strings"
+
+	"gopkg.in/yaml.v2"
 )
 
 func match(pattern string, value string) bool {
@@ -45,7 +49,7 @@ func (u *User) DistinguishedName() string {
 }
 
 type Policy struct {
-	Statements []Statement `json:"statements"`
+	Statements []Statement `json:"statements" yaml:"statements"`
 }
 
 func (p *Policy) Evaluate(path string, user *User) bool {
@@ -76,11 +80,11 @@ func (p *Policy) Evaluate(path string, user *User) bool {
 }
 
 type Statement struct {
-	ID       string   `json:"id"`
-	Effect   string   `json:"effect"`
-	Paths    []string `json:"paths"`
-	Users    []string `json:"users,omitempty"`
-	NotUsers []string `json:"not_users,omitempty"`
+	ID       string   `json:"id" yaml:"id"`
+	Effect   string   `json:"effect" yaml:"effect"`
+	Paths    []string `json:"paths" yaml:"paths"`
+	Users    []string `json:"users,omitempty" yaml:"users,omitempty"`
+	NotUsers []string `json:"not_users,omitempty" yaml:"not_users,omitempty"`
 }
 
 func (s *Statement) MatchPath(path string) bool {
@@ -110,4 +114,28 @@ func (s *Statement) MatchNotUser(user *User) bool {
 		}
 	}
 	return true
+}
+
+func Parse(path string, format string) (*Policy, error) {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("error reading policy from path %q: %w", path, err)
+	}
+	if format == "json" {
+		p := &Policy{}
+		err = json.Unmarshal(b, p)
+		if err != nil {
+			return nil, fmt.Errorf("error unmarshaling policy from path %q: %w", path, err)
+		}
+		return p, nil
+	}
+	if format == "yaml" {
+		p := &Policy{}
+		err = yaml.Unmarshal(b, p)
+		if err != nil {
+			return nil, fmt.Errorf("error unmarshaling policy from path %q: %w", path, err)
+		}
+		return p, nil
+	}
+	return nil, fmt.Errorf("unknown policy format %q:", format)
 }

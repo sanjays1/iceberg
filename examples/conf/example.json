@@ -11,24 +11,15 @@
       ]
     },
     {
-      "id": "AllowedAllow",
+      "id": "ProtectedAllowed",
       "effect": "deny",
       "paths": [
         "/allowed",
         "/allowed/*"
       ],
       "not_users": [
-        "/C=US/O=U.S. Government/OU=DoD/OU=PKI/OU=WHS/CN=LAST.FIRST.MIDDLE.EDIPI",
+        "/C=US/O=U.S. Government/OU=DoD/OU=PKI/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.EDIPI",
       ]
-    },
-    {
-      "id": "DeniedDeny",
-      "effect": "deny",
-      "paths": [
-        "/denied",
-        "/denied/*"
-      ],
-      "users": ["*"]
     }
   ]
 }

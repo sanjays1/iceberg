@@ -89,6 +89,9 @@ bin/iceberg: ## Build iceberg CLI for Darwin / amd64
 bin_linux/iceberg: ## Build iceberg CLI for Linux / amd64
 	GOOS=linux GOARCH=amd64 go build -o bin_linux/iceberg -gcflags="$(GCFLAGS)" -ldflags="$(ICEBERG_LDFLAGS)" github.com/deptofdefense/iceberg/cmd/iceberg
 
+bin_darwin_static/iceberg: ## Build iceberg CLI for Darwin / amd64
+	GOOS=darwin GOARCH=amd64 go build -o bin_darwin_static/iceberg -gcflags="$(GCFLAGS)" -ldflags="$(STATIC_LDFLAGS) $(ICEBERG_LDFLAGS)" github.com/deptofdefense/iceberg/cmd/iceberg
+
 bin_linux_static/iceberg: ## Build iceberg CLI for Linux / amd64
 	GOOS=linux GOARCH=amd64 go build -o bin_linux_static/iceberg -gcflags="$(GCFLAGS)" -ldflags="$(STATIC_LDFLAGS) $(ICEBERG_LDFLAGS)" github.com/deptofdefense/iceberg/cmd/iceberg
 

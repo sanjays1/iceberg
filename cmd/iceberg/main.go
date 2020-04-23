@@ -8,9 +8,9 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -32,10 +32,11 @@ import (
 )
 
 const (
-	flagListenAddr = "addr"
-	flagServerCert = "server-cert"
-	flagServerKey  = "server-key"
-	flagServerCA   = "server-ca"
+	flagListenAddr     = "addr"
+	flagServerCert     = "server-cert"
+	flagServerKey      = "server-key"
+	flagServerCAFormat = "server-ca-format"
+	flagServerCA       = "server-ca"
 	//
 	flagRootPath     = "root"
 	flagTemplatePath = "template"
@@ -48,6 +49,7 @@ func initFlags(flag *pflag.FlagSet) {
 	flag.StringP(flagListenAddr, "a", ":8080", "listen address")
 	flag.String(flagServerCert, "", "path to server cert")
 	flag.String(flagServerKey, "", "path to server key")
+	flag.String(flagServerCAFormat, "pkcs7", "format of the server CA bundle, either pkcs7 or pem")
 	flag.String(flagServerCA, "", "path to server ca")
 	flag.StringP(flagRootPath, "r", "", "document root")
 	flag.StringP(flagTemplatePath, "t", "", "template path")
@@ -138,6 +140,26 @@ func loadCertPoolFromPkcs7Package(pkcs7Package []byte) (*x509.CertPool, error) {
 	return certPool, nil
 }
 
+func loadClientCAs(path string, format string) (*x509.CertPool, error) {
+	b, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("error reading client CAs from path %q: %w", path, err)
+	}
+	if format == "pkcs7" {
+		clientCAs, err := loadCertPoolFromPkcs7Package(b)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing client CAs from path %q: %w", path, err)
+		}
+		return clientCAs, nil
+	}
+	if format == "pem" {
+		clientCAs := x509.NewCertPool()
+		clientCAs.AppendCertsFromPEM(bytes.TrimSpace(b))
+		return clientCAs, nil
+	}
+	return nil, fmt.Errorf("unknown client CA format %q", format)
+}
+
 func loadTemplate(p string) (*template.Template, error) {
 	b, err := ioutil.ReadFile(p)
 	if err != nil {
@@ -148,19 +170,6 @@ func loadTemplate(p string) (*template.Template, error) {
 		return nil, fmt.Errorf("error parsing template from file %q: %w", p, err)
 	}
 	return t, nil
-}
-
-func loadPolicy(path string) (*policy.Policy, error) {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("error reading policy from path %q: %w", path, err)
-	}
-	p := &policy.Policy{}
-	err = json.Unmarshal(b, p)
-	if err != nil {
-		return nil, fmt.Errorf("error unmarshaling policy from path %q: %w", path, err)
-	}
-	return p, nil
 }
 
 func newTraceID() string {
@@ -204,16 +213,9 @@ func main() {
 				return fmt.Errorf("error loading server key pair: %w", err)
 			}
 
-			serverCAPath := v.GetString(flagServerCA)
-
-			serverCABytes, err := ioutil.ReadFile(serverCAPath)
+			clientCAs, err := loadClientCAs(v.GetString(flagServerCA), v.GetString(flagServerCAFormat))
 			if err != nil {
-				return fmt.Errorf("error reading server ca from path %q: %w", serverCAPath, err)
-			}
-
-			clientCAs, err := loadCertPoolFromPkcs7Package(serverCABytes)
-			if err != nil {
-				return fmt.Errorf("error parsing server ca from path %q: %w", serverCAPath, err)
+				return fmt.Errorf("error parsing server ca from path: %w", err)
 			}
 
 			directoryListingTemplate, err := loadTemplate(v.GetString(flagTemplatePath))
@@ -221,7 +223,7 @@ func main() {
 				return fmt.Errorf("error loading directory listing template: %w", err)
 			}
 
-			accessPolicy, err := loadPolicy(v.GetString(flagPolicyPath))
+			accessPolicyDocument, err := policy.Parse(v.GetString(flagPolicyPath), v.GetString(flagPolicyFormat))
 			if err != nil {
 				return fmt.Errorf("error loading policy: %w", err)
 			}
@@ -229,9 +231,8 @@ func main() {
 			server := &http.Server{
 				Addr: listenAddress,
 				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					//user := r.TLS.PeerCertificates[0].Subject.String()
 					user := &policy.User{
-						Subject: r.TLS.PeerCertificates[0].Subject,
+						Subject: r.TLS.VerifiedChains[0][0].Subject,
 					}
 					//
 					icebergTraceID := newTraceID()
@@ -248,7 +249,7 @@ func main() {
 					//
 					p := r.URL.Path
 
-					if !accessPolicy.Evaluate(p, user) {
+					if !accessPolicyDocument.Evaluate(p, user) {
 						logger.Log("Access Denied", map[string]interface{}{
 							"url":              r.URL.String(),
 							"user_dn":          user.DistinguishedName(),
