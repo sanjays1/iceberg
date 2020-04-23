@@ -1,0 +1,38 @@
+version: "2.1"
+
+executors:
+  # `main` uses the `cimg/go:1.14` docker image.
+  main:
+    docker:
+      - image: cimg/go:1.14
+
+jobs:
+
+  # `test` tests the iceberg source code.
+  test:
+    executor: main
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: false
+      - run: make fmt
+      - run: make bin/goimports
+      - run: make imports
+      - run: git diff --exit-code
+
+  # `build` builds the iceberg executable.
+  build:
+    executor: main
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: false
+      - run: make tidy
+      - run: make bin_linux/iceberg
+
+workflows:
+  version: 2
+  main:
+    jobs:
+      - test
+      - build

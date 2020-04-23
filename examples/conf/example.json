@@ -1,0 +1,34 @@
+{
+  "statements": [
+    {
+      "id": "DefaultAllow",
+      "effect": "allow",
+      "paths": [
+        "*"
+      ],
+      "users": [
+        "*"
+      ]
+    },
+    {
+      "id": "AllowedAllow",
+      "effect": "deny",
+      "paths": [
+        "/allowed",
+        "/allowed/*"
+      ],
+      "not_users": [
+        "/C=US/O=U.S. Government/OU=DoD/OU=PKI/OU=WHS/CN=LAST.FIRST.MIDDLE.EDIPI",
+      ]
+    },
+    {
+      "id": "DeniedDeny",
+      "effect": "deny",
+      "paths": [
+        "/denied",
+        "/denied/*"
+      ],
+      "users": ["*"]
+    }
+  ]
+}
