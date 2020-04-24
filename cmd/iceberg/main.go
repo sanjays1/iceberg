@@ -46,13 +46,13 @@ const (
 )
 
 func initFlags(flag *pflag.FlagSet) {
-	flag.StringP(flagListenAddr, "a", ":8080", "listen address")
-	flag.String(flagServerCert, "", "path to server cert")
-	flag.String(flagServerKey, "", "path to server key")
-	flag.String(flagServerCAFormat, "pkcs7", "format of the server CA bundle, either pkcs7 or pem")
-	flag.String(flagServerCA, "", "path to server ca")
-	flag.StringP(flagRootPath, "r", "", "document root")
-	flag.StringP(flagTemplatePath, "t", "", "template path")
+	flag.StringP(flagListenAddr, "a", ":8080", "address that iceberg will listen on")
+	flag.String(flagServerCert, "", "path to server public cert")
+	flag.String(flagServerKey, "", "path to server private key")
+	flag.String(flagServerCAFormat, "pkcs7", "format of the server CA bundle for client auth, either pkcs7 or pem")
+	flag.String(flagServerCA, "", "path to server CA bundle for client auth")
+	flag.StringP(flagRootPath, "r", "", "path to the document root served")
+	flag.StringP(flagTemplatePath, "t", "", "path to the template file used during directory listing")
 	flag.StringP(flagPolicyFormat, "f", "json", "format of the policy file")
 	flag.StringP(flagPolicyPath, "p", "", "path to the policy file.")
 }
@@ -182,7 +182,7 @@ func newTraceID() string {
 
 func main() {
 	cmd := &cobra.Command{
-		Use:                   `iceberg [flags] -|FILE...`,
+		Use:                   `iceberg [flags]`,
 		DisableFlagsInUseLine: true,
 		Short:                 "iceberg is a file server using client certificate authentication and policy-based access control.",
 		SilenceErrors:         true,

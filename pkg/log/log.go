@@ -1,3 +1,10 @@
+// =================================================================
+//
+// Work of the U.S. Department of Defense, Defense Digital Service.
+// Released as open source under the MIT License.  See LICENSE file.
+//
+// =================================================================
+
 package log
 
 import (
@@ -8,6 +15,7 @@ import (
 	"time"
 )
 
+// SimpleLogger is a simple logger that logs using JSON Lines.
 type SimpleLogger struct {
 	writer io.Writer
 	mutex  *sync.Mutex
