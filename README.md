@@ -150,7 +150,9 @@ The below policy statement allows access to any authenticated user and then limi
 
 ## Building
 
-iceberg is a pure-golang server, so the only dependency needed to compile the server is the golang installation.  Go can be downloaded from <https://golang.org/dl/>.  This project uses [direnv](https://direnv.net/) to manage environment variables.  Install direnv and hook it into your shell.
+iceberg is a pure-golang server, so the only dependency needed to compile the server is the golang installation.  Go can be downloaded from <https://golang.org/dl/>.
+
+This project uses [direnv](https://direnv.net/) to manage environment variables and automatically adding the `bin` and `scripts` folder to the path.  Install direnv and hook it into your shell.  The use of `direnv` is optional as you can always call iceberg directly with `bin/iceberg`.
 
 If using `macOS`, follow the `macOS` instructions below.
 
@@ -160,7 +162,7 @@ To build the binary you can use the make targets `bin/iceberg`, `bin_linux/icebe
 
 You can install `go` on macOS using homebrew with `brew install go`.
 
-Install `direnv` with `brew install direnv`.  If using bash, then add `eval \"$(direnv hook bash)\"` to the `~/.bash_profile` file .  If using zsh, then add `eval \"$(direnv hook zsh)\"` to the `~/.zshrc` file.
+To install `direnv` on `macOS` use `brew install direnv`.  If using bash, then add `eval \"$(direnv hook bash)\"` to the `~/.bash_profile` file .  If using zsh, then add `eval \"$(direnv hook zsh)\"` to the `~/.zshrc` file.
 
 ## Contributing
 
