@@ -10,6 +10,7 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 set -eu
 
+# move up a directory
 cd $DIR/..
 
 pkgs=$(go list ./... | grep -v /vendor/ | tr "\n" " ")
@@ -25,10 +26,10 @@ echo "Running go vet with shadow"
 go vet -vettool="bin/shadow" $pkgs
 echo "******************"
 echo "Running errcheck"
-errcheck ${pkgs}
+bin/errcheck ${pkgs}
 echo "******************"
 echo "Running ineffassign"
-find . -name '*.go' | xargs ineffassign
+find . -name '*.go' | xargs bin/ineffassign
 echo "******************"
 echo "Running staticcheck"
-staticcheck -checks all ${pkgs}
+bin/staticcheck -checks all ${pkgs}
