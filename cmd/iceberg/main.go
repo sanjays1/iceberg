@@ -279,19 +279,15 @@ func main() {
 					})
 
 					// Get path from URL
-					p := server.CleanPath(r.URL.Path)
-
-					// If not "/" and ends in "/" then trims the trailing backslash
-					if len(p) > 1 && p != "//" && p[len(p)-1] == '/' {
-						p = p[0 : len(p)-1]
-					}
+					p := server.TrimTrailingForwardSlash(server.CleanPath(r.URL.Path))
 
 					// If path is not clean
-					if p != filepath.Clean(p) {
+					if !server.CheckPath(p) {
 						_ = logger.Log("Invalid Path", map[string]interface{}{
 							"user_dn":          user.DistinguishedName(),
 							"iceberg_trace_id": icebergTraceID,
-							"path":             r.URL.Path,
+							"url":              r.URL.String(),
+							"path":             p,
 						})
 						fmt.Println(p)
 						http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
