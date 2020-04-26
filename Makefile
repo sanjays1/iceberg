@@ -66,7 +66,7 @@ tidy: ## Tidy Go source code
 	go mod tidy
 
 .PHONY: test_go
-test_go: bin/errcheck bin/ineffassign bin/staticcheck ## Run Go tests
+test_go: bin/errcheck bin/ineffassign bin/staticcheck bin/shadow ## Run Go tests
 	bash scripts/test.sh
 
 .PHONY: test_cli
