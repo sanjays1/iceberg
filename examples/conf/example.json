@@ -1,25 +1,30 @@
 {
   "statements": [
     {
-      "id": "DefaultAllow",
+      "id": "Default",
       "effect": "allow",
-      "paths": [
-        "*"
-      ],
-      "users": [
-        "*"
+      "paths": ["*"],
+      "users": ["*"]
+    },
+    {
+      "id": "Allowed",
+      "effect": "deny",
+      "paths": ["/allowed", "/allowed/*"],
+      "not_users": [
+        "/C=US/O=Atlantis/OU=Atlantis Digital Service/OU=PKI/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.EDIPI"
       ]
     },
     {
-      "id": "ProtectedAllowed",
+      "id": "Denied",
       "effect": "deny",
-      "paths": [
-        "/allowed",
-        "/allowed/*"
-      ],
-      "not_users": [
-        "/C=US/O=U.S. Government/OU=DoD/OU=PKI/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.EDIPI",
-      ]
+      "paths": ["/denied", "/denied/*"],
+      "users": ["*"]
+    },
+    {
+      "id": "DenyABC",
+      "effect": "deny",
+      "paths": ["*.abc"],
+      "users": ["*"]
     }
   ]
 }

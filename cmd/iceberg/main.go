@@ -8,9 +8,7 @@
 package main
 
 import (
-	"bytes"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -25,10 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"go.mozilla.org/pkcs7"
 
+	"github.com/deptofdefense/iceberg/pkg/certs"
 	"github.com/deptofdefense/iceberg/pkg/log"
 	"github.com/deptofdefense/iceberg/pkg/policy"
+	"github.com/deptofdefense/iceberg/pkg/server"
 )
 
 const (
@@ -43,6 +42,8 @@ const (
 	//
 	flagPolicyFormat = "format"
 	flagPolicyPath   = "policy"
+	//
+	flagLogPath = "log"
 )
 
 func initFlags(flag *pflag.FlagSet) {
@@ -53,6 +54,11 @@ func initFlags(flag *pflag.FlagSet) {
 	flag.String(flagServerCA, "", "path to server CA bundle for client auth")
 	flag.StringP(flagRootPath, "r", "", "path to the document root served")
 	flag.StringP(flagTemplatePath, "t", "", "path to the template file used during directory listing")
+	flag.StringP(flagLogPath, "l", "-", "path to the log output.  Defaults to stdout.")
+	initPolicyFlags(flag)
+}
+
+func initPolicyFlags(flag *pflag.FlagSet) {
 	flag.StringP(flagPolicyFormat, "f", "json", "format of the policy file")
 	flag.StringP(flagPolicyPath, "p", "", "path to the policy file.")
 }
@@ -93,6 +99,17 @@ func checkConfig(v *viper.Viper) error {
 	if len(templatePath) == 0 {
 		return fmt.Errorf("template path is missing")
 	}
+	if err := checkPolicyConfig(v); err != nil {
+		return fmt.Errorf("invalid policy configuration: %w", err)
+	}
+	logPath := v.GetString(flagLogPath)
+	if len(logPath) == 0 {
+		return fmt.Errorf("log path is missing")
+	}
+	return nil
+}
+
+func checkPolicyConfig(v *viper.Viper) error {
 	policyFormat := v.GetString(flagPolicyFormat)
 	if len(policyFormat) == 0 {
 		return fmt.Errorf("policy format is missing")
@@ -102,62 +119,6 @@ func checkConfig(v *viper.Viper) error {
 		return fmt.Errorf("policy path is missing")
 	}
 	return nil
-}
-
-func serveTemplate(w http.ResponseWriter, r *http.Request, tmpl *template.Template, ctx interface{}) {
-	w.Header().Set("Cache-Control", "no-cache")
-	err := tmpl.Execute(w, ctx)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("error executing directory listing template for path %q: %w", r.URL.Path, err).Error())
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-}
-
-func serveFile(w http.ResponseWriter, r *http.Request, fs afero.Fs, p string, modtime time.Time, download bool) {
-	f, err := fs.Open(p)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("error opening file from path %q: %w", p, err).Error())
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-cache")
-	if download {
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(p)))
-	}
-	http.ServeContent(w, r, filepath.Base(p), modtime, f)
-}
-
-func loadCertPoolFromPkcs7Package(pkcs7Package []byte) (*x509.CertPool, error) {
-	p7, err := pkcs7.Parse(pkcs7Package)
-	if err != nil {
-		return nil, err
-	}
-	certPool := x509.NewCertPool()
-	for _, cert := range p7.Certificates {
-		certPool.AddCert(cert)
-	}
-	return certPool, nil
-}
-
-func loadClientCAs(path string, format string) (*x509.CertPool, error) {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("error reading client CAs from path %q: %w", path, err)
-	}
-	if format == "pkcs7" {
-		clientCAs, err := loadCertPoolFromPkcs7Package(b)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing client CAs from path %q: %w", path, err)
-		}
-		return clientCAs, nil
-	}
-	if format == "pem" {
-		clientCAs := x509.NewCertPool()
-		clientCAs.AppendCertsFromPEM(bytes.TrimSpace(b))
-		return clientCAs, nil
-	}
-	return nil, fmt.Errorf("unknown client CA format %q", format)
 }
 
 func loadTemplate(p string) (*template.Template, error) {
@@ -180,11 +141,67 @@ func newTraceID() string {
 	return traceID.String()
 }
 
+func initLogger(path string) (*log.SimpleLogger, error) {
+
+	if path == "-" {
+		return log.NewSimpleLogger(os.Stdout), nil
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("error opening log file %q: %w", path, err)
+	}
+
+	return log.NewSimpleLogger(f), nil
+}
+
 func main() {
-	cmd := &cobra.Command{
+
+	rootCommand := &cobra.Command{
 		Use:                   `iceberg [flags]`,
 		DisableFlagsInUseLine: true,
 		Short:                 "iceberg is a file server using client certificate authentication and policy-based access control.",
+	}
+
+	validatePolicyCommand := &cobra.Command{
+		Use:                   `validate-policy [--policy POLICY_FILE] [--policy-format POLICY_FORMAT]`,
+		DisableFlagsInUseLine: true,
+		Short:                 "validate the iceberg access policy file",
+		SilenceErrors:         true,
+		SilenceUsage:          true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			v, err := initViper(cmd)
+			if err != nil {
+				return fmt.Errorf("error initializing viper: %w", err)
+			}
+
+			if len(args) > 1 {
+				return cmd.Usage()
+			}
+
+			if errConfig := checkPolicyConfig(v); errConfig != nil {
+				return errConfig
+			}
+
+			accessPolicyDocument, err := policy.Parse(v.GetString(flagPolicyPath), v.GetString(flagPolicyFormat))
+			if err != nil {
+				return fmt.Errorf("error loading policy: %w", err)
+			}
+
+			err = accessPolicyDocument.Validate()
+			if err != nil {
+				return fmt.Errorf("error validating policy: %w", err)
+			}
+
+			return nil
+		},
+	}
+	initFlags(validatePolicyCommand.Flags())
+
+	serveCommand := &cobra.Command{
+		Use:                   `serve [flags]`,
+		DisableFlagsInUseLine: true,
+		Short:                 "start the iceberg server",
 		SilenceErrors:         true,
 		SilenceUsage:          true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -201,7 +218,10 @@ func main() {
 				return errConfig
 			}
 
-			logger := log.NewSimpleLogger(os.Stdout)
+			logger, err := initLogger(v.GetString(flagLogPath))
+			if err != nil {
+				return fmt.Errorf("error initializing logger: %w", err)
+			}
 
 			listenAddress := v.GetString(flagListenAddr)
 			rootPath := v.GetString(flagRootPath)
@@ -213,9 +233,9 @@ func main() {
 				return fmt.Errorf("error loading server key pair: %w", err)
 			}
 
-			clientCAs, err := loadClientCAs(v.GetString(flagServerCA), v.GetString(flagServerCAFormat))
+			clientCAs, err := certs.LoadCertPool(v.GetString(flagServerCA), v.GetString(flagServerCAFormat))
 			if err != nil {
-				return fmt.Errorf("error parsing server ca from path: %w", err)
+				return fmt.Errorf("error loading client certificate authority: %w", err)
 			}
 
 			directoryListingTemplate, err := loadTemplate(v.GetString(flagTemplatePath))
@@ -228,8 +248,19 @@ func main() {
 				return fmt.Errorf("error loading policy: %w", err)
 			}
 
-			server := &http.Server{
+			err = accessPolicyDocument.Validate()
+			if err != nil {
+				return fmt.Errorf("error validating policy: %w", err)
+			}
+
+			httpServer := &http.Server{
 				Addr: listenAddress,
+				TLSConfig: &tls.Config{
+					ServerName:   "iceberg",
+					Certificates: []tls.Certificate{serverKeyPair},
+					ClientAuth:   tls.RequireAndVerifyClientCert,
+					ClientCAs:    clientCAs,
+				},
 				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					user := &policy.User{
 						Subject: r.TLS.VerifiedChains[0][0].Subject,
@@ -237,7 +268,7 @@ func main() {
 					//
 					icebergTraceID := newTraceID()
 					//
-					logger.Log("Request", map[string]interface{}{
+					_ = logger.Log("Request", map[string]interface{}{
 						"url":              r.URL.String(),
 						"user_dn":          user.DistinguishedName(),
 						"source":           r.RemoteAddr,
@@ -246,30 +277,54 @@ func main() {
 						"method":           r.Method,
 						"iceberg_trace_id": icebergTraceID,
 					})
-					//
-					p := r.URL.Path
 
-					if !accessPolicyDocument.Evaluate(p, user) {
-						logger.Log("Access Denied", map[string]interface{}{
-							"url":              r.URL.String(),
+					// Get path from URL
+					p := server.CleanPath(r.URL.Path)
+
+					// If not "/" and ends in "/" then trims the trailing backslash
+					if len(p) > 1 && p != "//" && p[len(p)-1] == '/' {
+						p = p[0 : len(p)-1]
+					}
+
+					// If path is not clean
+					if p != filepath.Clean(p) {
+						_ = logger.Log("Invalid Path", map[string]interface{}{
 							"user_dn":          user.DistinguishedName(),
 							"iceberg_trace_id": icebergTraceID,
+							"path":             r.URL.Path,
+						})
+						fmt.Println(p)
+						http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+						return
+					}
+
+					if !accessPolicyDocument.Evaluate(p, user) {
+						_ = logger.Log("Access Denied", map[string]interface{}{
+							"user_dn":          user.DistinguishedName(),
+							"iceberg_trace_id": icebergTraceID,
+							"url":              r.URL.String(),
 						})
 						http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 						return
+					} else {
+						_ = logger.Log("Access Allowed", map[string]interface{}{
+							"user_dn":          user.DistinguishedName(),
+							"iceberg_trace_id": icebergTraceID,
+							"url":              r.URL.String(),
+						})
 					}
 
 					fi, err := root.Stat(p)
 					if err != nil {
 						if os.IsNotExist(err) {
-							logger.Log("Not found", map[string]interface{}{
+							_ = logger.Log("Not found", map[string]interface{}{
 								"path":             p,
 								"iceberg_trace_id": icebergTraceID,
 							})
 							http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 							return
 						}
-						logger.Log("Error Stating File", map[string]interface{}{
+						_ = logger.Log("Error Stating File", map[string]interface{}{
 							"path":             p,
 							"iceberg_trace_id": icebergTraceID,
 						})
@@ -280,7 +335,7 @@ func main() {
 						indexPath := filepath.Join(p, "index.html")
 						indexFileInfo, err := root.Stat(indexPath)
 						if err != nil && !os.IsNotExist(err) {
-							logger.Log("Error stating index file", map[string]interface{}{
+							_ = logger.Log("Error stating index file", map[string]interface{}{
 								"path":             indexPath,
 								"iceberg_trace_id": icebergTraceID,
 							})
@@ -290,7 +345,7 @@ func main() {
 						if os.IsNotExist(err) || indexFileInfo.IsDir() {
 							fileInfos, err := afero.ReadDir(root, p)
 							if err != nil {
-								logger.Log("Error reading directory", map[string]interface{}{
+								_ = logger.Log("Error reading directory", map[string]interface{}{
 									"path":             p,
 									"iceberg_trace_id": icebergTraceID,
 								})
@@ -298,9 +353,9 @@ func main() {
 								return
 							}
 							files := make([]struct {
-								ModTime string
-								Size    int64
-								Path    string
+								ModTime string //lint:ignore U1000 slice is appended to
+								Size    int64  //lint:ignore U1000 slice is appended to
+								Path    string //lint:ignore U1000 slice is appended to
 							}, 0, len(fileInfos))
 							for _, fi := range fileInfos {
 								files = append(files, struct {
@@ -313,13 +368,13 @@ func main() {
 									Path:    filepath.Join(p, fi.Name()),
 								})
 							}
-							serveTemplate(w, r, directoryListingTemplate, struct {
+							server.ServeTemplate(w, r, directoryListingTemplate, struct {
 								Up        string
 								Directory string
 								Files     []struct {
-									ModTime string
-									Size    int64
-									Path    string
+									ModTime string //lint:ignore U1000 slice is set
+									Size    int64  //lint:ignore U1000 slice is set
+									Path    string //lint:ignore U1000 slice is set
 								}
 							}{
 								Up:        filepath.Dir(p),
@@ -328,28 +383,23 @@ func main() {
 							})
 							return
 						}
-						serveFile(w, r, root, indexPath, time.Time{}, false)
+						server.ServeFile(w, r, root, indexPath, time.Time{}, false)
 						return
 					}
-					serveFile(w, r, root, p, fi.ModTime(), true)
-					return
+					server.ServeFile(w, r, root, p, fi.ModTime(), true)
 				}),
-				TLSConfig: &tls.Config{
-					ServerName:   "iceberg",
-					Certificates: []tls.Certificate{serverKeyPair},
-					ClientAuth:   tls.RequireAndVerifyClientCert,
-					ClientCAs:    clientCAs,
-				},
 			}
-			fmt.Fprintf(os.Stderr, "Listening on %q\n", listenAddress)
-			return server.ListenAndServeTLS("", "")
+			_, _ = fmt.Fprintf(os.Stderr, "Listening on %q\n", listenAddress)
+			return httpServer.ListenAndServeTLS("", "")
 		},
 	}
-	initFlags(cmd.Flags())
+	initFlags(serveCommand.Flags())
 
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "iceberg: "+err.Error())
-		fmt.Fprintln(os.Stderr, "Try iceberg --help for more information.")
+	rootCommand.AddCommand(validatePolicyCommand, serveCommand)
+
+	if err := rootCommand.Execute(); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "iceberg: "+err.Error())
+		_, _ = fmt.Fprintln(os.Stderr, "Try iceberg --help for more information.")
 		os.Exit(1)
 	}
 }

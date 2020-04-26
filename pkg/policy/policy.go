@@ -8,55 +8,63 @@
 package policy
 
 import (
-	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"strings"
 
 	"gopkg.in/yaml.v2"
 )
 
-func match(pattern string, value string) bool {
-	if pattern == "*" {
-		return true
-	}
-	if strings.HasSuffix(pattern, "*") {
-		if strings.HasPrefix(value, pattern[0:len(pattern)-2]) {
-			return true
-		}
-	} else {
-		if pattern == value {
-			return true
-		}
-	}
-	return false
-}
+const (
+	Allow    = "allow"
+	Deny     = "deny"
+	Wildcard = "*"
+)
 
-type User struct {
-	Subject pkix.Name
-}
-
-func (u *User) DistinguishedName() string {
-	terms := make([]string, 0)
-	for _, n := range u.Subject.Names {
-		if n.Type.Equal([]int{2, 5, 4, 6}) {
-			terms = append(terms, fmt.Sprintf("C=%s", n.Value))
-		} else if n.Type.Equal([]int{2, 5, 4, 10}) {
-			terms = append(terms, fmt.Sprintf("O=%s", n.Value))
-		} else if n.Type.Equal([]int{2, 5, 4, 11}) {
-			terms = append(terms, fmt.Sprintf("OU=%s", n.Value))
-		} else if n.Type.Equal([]int{2, 5, 4, 3}) {
-			terms = append(terms, fmt.Sprintf("CN=%s", n.Value))
-		} else {
-			terms = append(terms, fmt.Sprintf("%s=%s", n.Type, n.Value))
-		}
+var (
+	StatementDefaultAllow = Statement{
+		ID:       "DefaultAllow",
+		Effect:   Allow,
+		Paths:    []string{Wildcard},
+		Users:    []string{Wildcard},
+		NotUsers: []string{},
 	}
-	return "/" + strings.Join(terms, "/")
-}
+)
+
+var (
+	PolicyDefaultAllow = Policy{
+		Statements: []Statement{
+			StatementDefaultAllow,
+		},
+	}
+	PolicyDefaultDeny = Policy{
+		Statements: []Statement{},
+	}
+)
 
 type Policy struct {
+	ID         string      `json:"id" yaml:"id"`
 	Statements []Statement `json:"statements" yaml:"statements"`
+}
+
+func (p Policy) Clone() Policy {
+	statements := make([]Statement, 0, len(p.Statements))
+	for _, s := range p.Statements {
+		statements = append(statements, s.Clone())
+	}
+	return Policy{
+		ID:         p.ID,
+		Statements: statements,
+	}
+}
+
+func (p Policy) Validate() error {
+	for i, s := range p.Statements {
+		if err := s.Validate(); err != nil {
+			return fmt.Errorf("statement %d (%q) is invalid: %w", i, s.ID, err)
+		}
+	}
+	return nil
 }
 
 func (p *Policy) Evaluate(path string, user *User) bool {
@@ -67,7 +75,7 @@ func (p *Policy) Evaluate(path string, user *User) bool {
 		}
 		if len(statement.Users) > 0 {
 			if statement.MatchUser(user) {
-				if statement.Effect == "allow" {
+				if statement.Effect == Allow {
 					allow = true
 				} else {
 					return false
@@ -75,7 +83,7 @@ func (p *Policy) Evaluate(path string, user *User) bool {
 			}
 		} else if len(statement.NotUsers) > 0 {
 			if statement.MatchNotUser(user) {
-				if statement.Effect == "allow" {
+				if statement.Effect == Allow {
 					allow = true
 				} else {
 					return false
@@ -84,43 +92,6 @@ func (p *Policy) Evaluate(path string, user *User) bool {
 		}
 	}
 	return allow
-}
-
-type Statement struct {
-	ID       string   `json:"id" yaml:"id"`
-	Effect   string   `json:"effect" yaml:"effect"`
-	Paths    []string `json:"paths" yaml:"paths"`
-	Users    []string `json:"users,omitempty" yaml:"users,omitempty"`
-	NotUsers []string `json:"not_users,omitempty" yaml:"not_users,omitempty"`
-}
-
-func (s *Statement) MatchPath(path string) bool {
-	for _, candidate := range s.Paths {
-		if match(candidate, path) {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *Statement) MatchUser(user *User) bool {
-	dn := user.DistinguishedName()
-	for _, candidate := range s.Users {
-		if match(candidate, dn) {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *Statement) MatchNotUser(user *User) bool {
-	dn := user.DistinguishedName()
-	for _, candidate := range s.NotUsers {
-		if match(candidate, dn) {
-			return false
-		}
-	}
-	return true
 }
 
 func Parse(path string, format string) (*Policy, error) {
@@ -144,5 +115,5 @@ func Parse(path string, format string) (*Policy, error) {
 		}
 		return p, nil
 	}
-	return nil, fmt.Errorf("unknown policy format %q:", format)
+	return nil, fmt.Errorf("unknown policy format %q", format)
 }

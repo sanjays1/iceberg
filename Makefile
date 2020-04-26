@@ -66,7 +66,7 @@ tidy: ## Tidy Go source code
 	go mod tidy
 
 .PHONY: test_go
-test_go: ## Run Go tests
+test_go: bin/errcheck bin/ineffassign bin/staticcheck ## Run Go tests
 	bash scripts/test.sh
 
 .PHONY: test_cli
@@ -82,6 +82,18 @@ install:  ## Install iceberg CLI on current platform
 
 bin/goimports:
 	go build -o bin/goimports golang.org/x/tools/cmd/goimports
+
+bin/errcheck:
+	go build -o bin/errcheck github.com/kisielk/errcheck
+
+bin/ineffassign:
+	go build -o bin/ineffassign github.com/gordonklaus/ineffassign
+
+bin/staticcheck:
+	go build -o bin/staticcheck honnef.co/go/tools/cmd/staticcheck
+
+bin/shadow:
+	go build -o bin/shadow golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow
 
 bin/iceberg: ## Build iceberg CLI for Darwin / amd64
 	go build -o bin/iceberg -gcflags="$(GCFLAGS)" -ldflags="$(LDFLAGS) $(ICEBERG_LDFLAGS)" github.com/deptofdefense/iceberg/cmd/iceberg

@@ -8,16 +8,19 @@
 
 ## Usage
 
+The `iceberg` program has 3 sub commands: `help`, `serve`, and `validate-policy`.  Use `iceberg serve` to launch the server and `iceberg validate-policy` to validate a policy file.  Below is the usage for the `iceberg serve` command.
+
 ```
-iceberg is a file server using client certificate authentication and policy-based access control.
+start the iceberg server
 
 Usage:
-  iceberg [flags]
+  iceberg serve [flags]
 
 Flags:
   -a, --addr string               address that iceberg will listen on (default ":8080")
   -f, --format string             format of the policy file (default "json")
-  -h, --help                      help for iceberg
+  -h, --help                      help for serve
+  -l, --log string                path to the log output.  Defaults to stdout. (default "-")
   -p, --policy string             path to the policy file.
   -r, --root string               path to the document root served
       --server-ca string          path to server CA bundle for client auth
@@ -109,7 +112,7 @@ struct {
 Below are the example commands and files needed to run a server that, by default allows access to all files, but limits access to the `/secure` path to a limited set of users identified by their client certificate subject distinguished name.
 
 ```shell
-iceberg \
+iceberg serve \
 --server-cert temp/server.crt \
 --server-key temp/server.key \
 --server-ca temp/AllCerts.p7b \
