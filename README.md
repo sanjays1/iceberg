@@ -84,7 +84,7 @@ The values included in `users` or `not_users` includes an array of distinguished
 ```json
 {
   "users": [
-    "/C=US/O=U.S. Government/OU=DoD/OU=PKI/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.EDIPI",
+    "/C=US/O=Atlantis/OU=Atlantis Digital Service/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.ID"
   ]
 }
 ```
@@ -121,7 +121,7 @@ Below are the example commands and files needed to run a server that, by default
 iceberg serve \
 --server-cert temp/server.crt \
 --server-key temp/server.key \
---client-ca temp/AllCerts.p7b \
+--client-ca temp/certs.p7b \
 --root examples/public \
 -t examples/conf/template.html \
 --policy examples/conf/example.json
@@ -150,7 +150,7 @@ The below policy statement allows access to any authenticated user and then limi
         "/secure/*"
       ],
       "not_users": [
-        "/C=US/O=U.S. Government/OU=DoD/OU=PKI/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.EDIPI",
+        "/C=US/O=Atlantis/OU=Atlantis Digital Service/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.ID",
       ]
     }
   ]

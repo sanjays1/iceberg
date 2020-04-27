@@ -11,7 +11,7 @@
       "effect": "deny",
       "paths": ["/allowed", "/allowed/*"],
       "not_users": [
-        "/C=US/O=Atlantis/OU=Atlantis Digital Service/OU=PKI/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.EDIPI"
+        "/C=US/O=Atlantis/OU=Atlantis Digital Service/OU=CONTRACTOR/CN=LAST.FIRST.MIDDLE.ID"
       ]
     },
     {

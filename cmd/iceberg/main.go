@@ -32,8 +32,10 @@ import (
 
 const (
 	flagListenAddr     = "addr"
+	//
 	flagServerCert     = "server-cert"
 	flagServerKey      = "server-key"
+	//
 	flagClientCAFormat = "client-ca-format"
 	flagClientCA       = "client-ca"
 	//
