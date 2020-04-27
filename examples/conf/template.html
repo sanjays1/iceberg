@@ -5,8 +5,6 @@
     table, th, td {
       border: 1px solid black;
       border-collapse: collapse;
-      padding: 2px;
-      font-size: 20px;
     }
     th, td {
       border: 1px solid black;
@@ -36,7 +34,7 @@
     <tr>
       <td>File</td>
       <td>{{.ModTime}}</td>
-      <td>{{.Size}}</td>
+      <td style="text-align:right;">{{.Size}}</td>
       <td><a href="{{.Path}}">{{.Path}}</a></td>
     </tr>
     {{end}}
