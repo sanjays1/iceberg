@@ -2,15 +2,15 @@
 
 ## Description
 
-*iceberg* is a file server using client certificate authentication and policy-based access control.  iceberg requires the use of client certificates verified with the certificate authority chain configured at startup.
+**iceberg** is a file server using client certificate authentication and policy-based access control.  iceberg requires the use of client certificates verified with the certificate authority chain configured at startup.
 
-*iceberg* is built in [Go](https://golang.org/). iceberg uses the [net/http package](http://godoc.org/pkg/net/http) and [crypto/tls](https://godoc.org/crypto/tls#Config) packages in the Go standard library to secure communication.
+**iceberg** is built in [Go](https://golang.org/). iceberg uses the [net/http package](http://godoc.org/pkg/net/http) and [crypto/tls](https://godoc.org/crypto/tls#Config) packages in the Go standard library to secure communication.
 
 ## Usage
 
 The `iceberg` program has 3 sub commands: `help`, `serve`, and `validate-policy`.  Use `iceberg serve` to launch the server and `iceberg validate-policy` to validate a policy file.  Below is the usage for the `iceberg serve` command.
 
-```
+```text
 start the iceberg server
 
 Usage:
@@ -18,17 +18,23 @@ Usage:
 
 Flags:
   -a, --addr string               address that iceberg will listen on (default ":8080")
+      --client-ca string          path to CA bundle for client authentication
+      --client-ca-format string   format of the CA bundle for client authentication, either pkcs7 or pem (default "pkcs7")
   -f, --format string             format of the policy file (default "json")
   -h, --help                      help for serve
   -l, --log string                path to the log output.  Defaults to stdout. (default "-")
   -p, --policy string             path to the policy file.
   -r, --root string               path to the document root served
-      --server-ca string          path to server CA bundle for client auth
-      --server-ca-format string   format of the server CA bundle for client auth, either pkcs7 or pem (default "pkcs7")
       --server-cert string        path to server public cert
       --server-key string         path to server private key
   -t, --template string           path to the template file used during directory listing
 ```
+
+### Network Encryption
+
+**iceberg** requires the use of a server certificate and client certificate authentication.  The server certificate is loaded from a PEM-encoded x509 key pair using the [LoadX509KeyPair](https://golang.org/pkg/crypto/tls/#LoadX509KeyPair) function.  The location of the key pair is specified using the `--server-cert` and `--server-key` command line flags.
+
+The client certificate authorities can be loaded from a [PKCS#7](https://en.wikipedia.org/wiki/PKCS) or PEM-encoded file.  The [Parse](https://godoc.org/go.mozilla.org/pkcs7#Parse) function in [go.mozilla.org/pkcs7](https://godoc.org/go.mozilla.org/pkcs7) is used to parse the PKCS#7-encoded data loaded from a `.p7b` file.  The [AppendCertsFromPEM](https://godoc.org/crypto/x509#CertPool.AppendCertsFromPEM) method is used to parse PEM-encoded data loaded from a `.pem` file.  The location of the client certificate authorities is specified using the `client-ca` and `client-ca-format` command line flags.
 
 ### Policy Document
 
@@ -115,7 +121,7 @@ Below are the example commands and files needed to run a server that, by default
 iceberg serve \
 --server-cert temp/server.crt \
 --server-key temp/server.key \
---server-ca temp/AllCerts.p7b \
+--client-ca temp/AllCerts.p7b \
 --root examples/public \
 -t examples/conf/template.html \
 --policy examples/conf/example.json

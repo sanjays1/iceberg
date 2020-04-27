@@ -34,8 +34,8 @@ const (
 	flagListenAddr     = "addr"
 	flagServerCert     = "server-cert"
 	flagServerKey      = "server-key"
-	flagServerCAFormat = "server-ca-format"
-	flagServerCA       = "server-ca"
+	flagClientCAFormat = "client-ca-format"
+	flagClientCA       = "client-ca"
 	//
 	flagRootPath     = "root"
 	flagTemplatePath = "template"
@@ -50,8 +50,8 @@ func initFlags(flag *pflag.FlagSet) {
 	flag.StringP(flagListenAddr, "a", ":8080", "address that iceberg will listen on")
 	flag.String(flagServerCert, "", "path to server public cert")
 	flag.String(flagServerKey, "", "path to server private key")
-	flag.String(flagServerCAFormat, "pkcs7", "format of the server CA bundle for client auth, either pkcs7 or pem")
-	flag.String(flagServerCA, "", "path to server CA bundle for client auth")
+	flag.String(flagClientCAFormat, "pkcs7", "format of the CA bundle for client authentication, either pkcs7 or pem")
+	flag.String(flagClientCA, "", "path to CA bundle for client authentication")
 	flag.StringP(flagRootPath, "r", "", "path to the document root served")
 	flag.StringP(flagTemplatePath, "t", "", "path to the template file used during directory listing")
 	flag.StringP(flagLogPath, "l", "-", "path to the log output.  Defaults to stdout.")
@@ -87,7 +87,7 @@ func checkConfig(v *viper.Viper) error {
 	if len(serverKey) == 0 {
 		return fmt.Errorf("server key is missing")
 	}
-	serverCA := v.GetString(flagServerCA)
+	serverCA := v.GetString(flagClientCA)
 	if len(serverCA) == 0 {
 		return fmt.Errorf("server CA is missing")
 	}
@@ -233,7 +233,7 @@ func main() {
 				return fmt.Errorf("error loading server key pair: %w", err)
 			}
 
-			clientCAs, err := certs.LoadCertPool(v.GetString(flagServerCA), v.GetString(flagServerCAFormat))
+			clientCAs, err := certs.LoadCertPool(v.GetString(flagClientCA), v.GetString(flagClientCAFormat))
 			if err != nil {
 				return fmt.Errorf("error loading client certificate authority: %w", err)
 			}
