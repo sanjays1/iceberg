@@ -31,10 +31,10 @@ import (
 )
 
 const (
-	flagListenAddr     = "addr"
+	flagListenAddr = "addr"
 	//
-	flagServerCert     = "server-cert"
-	flagServerKey      = "server-key"
+	flagServerCert = "server-cert"
+	flagServerKey  = "server-key"
 	//
 	flagClientCAFormat = "client-ca-format"
 	flagClientCA       = "client-ca"
