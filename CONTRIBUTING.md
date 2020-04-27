@@ -6,6 +6,10 @@ Thank you for your interest in contributing.  Below is some brief guidance for c
 
 See [AUTHORS](https://github.com/deptofdefense/iceberg/blob/master/AUTHORS) for a list of contributors.  When making a contribution, please add yourself to the list if you like.
 
+## Contact
+
+Please direct any further questions about contributing to <code@dds.mil>.
+
 ## Issues
 
 Please submit bugs or issues to <https://github.com/deptofdefense/iceberg/issues>.

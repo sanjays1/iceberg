@@ -177,6 +177,10 @@ To install `direnv` on `macOS` use `brew install direnv`.  If using bash, then a
 
 We'd love to have your contributions!  Please see [CONTRIBUTING.md](CONTRIBUTING.md) for more info.
 
+## Security
+
+Please see [SECURITY.md](SECURITY.md) for more info.
+
 ## License
 
 This project constitutes a work of the United States Government and is not subject to domestic copyright protection under 17 USC § 105.  However, because the project utilizes code licensed from contributors and other third parties, it therefore is licensed under the MIT License.  See LICENSE file for more information.
