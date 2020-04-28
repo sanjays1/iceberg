@@ -9,6 +9,7 @@ package main
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -255,20 +256,54 @@ func main() {
 				return fmt.Errorf("error validating policy: %w", err)
 			}
 
+			tlsConfig := &tls.Config{
+				Certificates: []tls.Certificate{serverKeyPair},
+				ClientAuth:   tls.RequireAnyClientCert,
+				ClientCAs:    clientCAs,
+			}
+
 			httpServer := &http.Server{
-				Addr: listenAddress,
-				TLSConfig: &tls.Config{
-					ServerName:   "iceberg",
-					Certificates: []tls.Certificate{serverKeyPair},
-					ClientAuth:   tls.RequireAndVerifyClientCert,
-					ClientCAs:    clientCAs,
-				},
+				Addr:      listenAddress,
+				TLSConfig: tlsConfig,
+				ErrorLog:  log.WrapStandardLogger(logger),
 				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					user := &policy.User{
-						Subject: r.TLS.VerifiedChains[0][0].Subject,
-					}
 					//
 					icebergTraceID := newTraceID()
+					//
+					peerCertificates := r.TLS.PeerCertificates
+					intermediates := x509.NewCertPool()
+					for _, c := range peerCertificates[1:] {
+						intermediates.AddCert(c)
+					}
+					verifiedChains, err := peerCertificates[0].Verify(x509.VerifyOptions{
+						Roots:         clientCAs,
+						Intermediates: intermediates,
+						KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+					})
+					if err != nil {
+						_ = logger.Log("Certificate Denied", map[string]interface{}{
+							"iceberg_trace_id": icebergTraceID,
+							"url":              r.URL.String(),
+							"error":            err.Error(),
+							"subjects":         certs.Subjects(peerCertificates),
+							"issuers":          certs.Issuers(peerCertificates),
+						})
+						http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+						return
+					} else {
+						_ = logger.Log("Certificate Verified", map[string]interface{}{
+							"iceberg_trace_id": icebergTraceID,
+							"url":              r.URL.String(),
+							"subjects":         certs.Subjects(peerCertificates),
+							"issuers":          certs.Issuers(peerCertificates),
+						})
+					}
+					//
+					user := &policy.User{
+						Subject: verifiedChains[0][0].Subject,
+						//Subject: r.TLS.VerifiedChains[0][0].Subject,
+						//Subject: r.TLS.PeerCertificates[0].Subject,
+					}
 					//
 					_ = logger.Log("Request", map[string]interface{}{
 						"url":              r.URL.String(),
@@ -291,7 +326,6 @@ func main() {
 							"url":              r.URL.String(),
 							"path":             p,
 						})
-						fmt.Println(p)
 						http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 						return
 					}

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 	"time"
 )
@@ -28,9 +29,7 @@ func NewSimpleLogger(w io.Writer) *SimpleLogger {
 	}
 }
 
-func (s *SimpleLogger) Log(msg string, fields ...map[string]interface{}) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+func (s *SimpleLogger) Marshal(msg string, fields ...map[string]interface{}) ([]byte, error) {
 	obj := map[string]interface{}{
 		"ts":  time.Now().Format(time.RFC3339),
 		"msg": msg,
@@ -42,8 +41,31 @@ func (s *SimpleLogger) Log(msg string, fields ...map[string]interface{}) error {
 	}
 	b, err := json.Marshal(obj)
 	if err != nil {
+		return make([]byte, 0), fmt.Errorf("error marshaling long entry: %w", err)
+	}
+	return b, nil
+}
+
+func (s *SimpleLogger) Log(msg string, fields ...map[string]interface{}) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	b, err := s.Marshal(msg, fields...)
+	if err != nil {
 		return fmt.Errorf("error marshaling long entry: %w", err)
 	}
 	_, err = fmt.Fprintln(s.writer, string(b))
 	return err
+}
+
+type standardLogger struct {
+	simpleLogger *SimpleLogger
+}
+
+func (s *standardLogger) Write(p []byte) (int, error) {
+	err := s.simpleLogger.Log(string(p))
+	return 0, err
+}
+
+func WrapStandardLogger(s *SimpleLogger) *log.Logger {
+	return log.New(&standardLogger{simpleLogger: s}, "", 0)
 }

@@ -25,29 +25,6 @@ help:  ## Print the help documentation
 	@grep -E '^[a-zA-Z0-9_-\]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 #
-# Dependencies
-#
-
-deps_go:  ## Install Go dependencies
-	go get -d -t ./...
-
-.PHONY: deps_go_test
-deps_go_test: ## Download Go dependencies for tests
-	go get golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow # download shadow
-	go install golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow # install shadow
-	go get -u github.com/kisielk/errcheck # download and install errcheck
-	go get -u github.com/client9/misspell/cmd/misspell # download and install misspell
-	go get -u github.com/gordonklaus/ineffassign # download and install ineffassign
-	go get -u honnef.co/go/tools/cmd/staticcheck # download and instal staticcheck
-	go get -u golang.org/x/tools/cmd/goimports # download and install goimports
-
-deps_arm:  ## Install dependencies to cross-compile to ARM
-	# ARMv7
-	apt-get install -y libc6-armel-cross libc6-dev-armel-cross binutils-arm-linux-gnueabi libncurses5-dev gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
-  # ARMv8
-	apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-#
 # Go building, formatting, testing, and installing
 #
 

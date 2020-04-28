@@ -159,7 +159,7 @@ The below policy statement allows access to any authenticated user and then limi
 
 ## Building
 
-iceberg is a pure-golang server, so the only dependency needed to compile the server is the golang installation.  Go can be downloaded from <https://golang.org/dl/>.
+**iceberg** is written in pure Go, so the only dependency needed to compile the server is [Go](https://golang.org/).  Go can be downloaded from <https://golang.org/dl/>.
 
 This project uses [direnv](https://direnv.net/) to manage environment variables and automatically adding the `bin` and `scripts` folder to the path.  Install direnv and hook it into your shell.  The use of `direnv` is optional as you can always call iceberg directly with `bin/iceberg`.
 
