@@ -30,6 +30,9 @@ Flags:
       --server-cert string        path to server public cert
       --server-key string         path to server private key
   -t, --template string           path to the template file used during directory listing
+      --timeout-idle string       maximum amount of time to wait for the next request when keep-alives are enabled (default "5m")
+      --timeout-read string       maximum duration for reading the entire request (default "5m")
+      --timeout-write string      maximum duration before timing out writes of the response (default "5m")
 ```
 
 ### Network Encryption

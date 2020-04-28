@@ -74,7 +74,7 @@ func initFlags(flag *pflag.FlagSet) {
 func initTimeoutFlags(flag *pflag.FlagSet) {
 	flag.String(flagTimeoutRead, "5m", "maximum duration for reading the entire request")
 	flag.String(flagTimeoutWrite, "5m", "maximum duration before timing out writes of the response")
-	flag.String(flagTimeoutIdle, "5m", " maximum amount of time to wait for the next request when keep-alives are enabled")
+	flag.String(flagTimeoutIdle, "5m", "maximum amount of time to wait for the next request when keep-alives are enabled")
 }
 
 func initPolicyFlags(flag *pflag.FlagSet) {
