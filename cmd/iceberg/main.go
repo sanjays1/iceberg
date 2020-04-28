@@ -32,7 +32,9 @@ import (
 )
 
 const (
-	flagListenAddr = "addr"
+	flagListenAddr     = "addr"
+	flagRedirectAddr   = "redirect"
+	flagPublicLocation = "public-location"
 	//
 	flagServerCert = "server-cert"
 	flagServerKey  = "server-key"
@@ -50,7 +52,9 @@ const (
 )
 
 func initFlags(flag *pflag.FlagSet) {
+	flag.String(flagPublicLocation, "", "the public location of the server used for redirects")
 	flag.StringP(flagListenAddr, "a", ":8080", "address that iceberg will listen on")
+	flag.String(flagRedirectAddr, "", "address that iceberg will listen to and redirect requests to the public location")
 	flag.String(flagServerCert, "", "path to server public cert")
 	flag.String(flagServerKey, "", "path to server private key")
 	flag.String(flagClientCAFormat, "pkcs7", "format of the CA bundle for client authentication, either pkcs7 or pem")
@@ -81,6 +85,16 @@ func checkConfig(v *viper.Viper) error {
 	addr := v.GetString(flagListenAddr)
 	if len(addr) == 0 {
 		return fmt.Errorf("listen address is missing")
+	}
+	redirectAddress := v.GetString(flagRedirectAddr)
+	if len(redirectAddress) > 0 {
+		publicLocation := v.GetString(flagPublicLocation)
+		if len(publicLocation) == 0 {
+			return fmt.Errorf("public location is required when redirecting")
+		}
+		if !strings.HasPrefix(publicLocation, "https://") {
+			return fmt.Errorf("public location must start with \"https://\"")
+		}
 	}
 	serverCert := v.GetString(flagServerCert)
 	if len(serverCert) == 0 {
@@ -227,6 +241,8 @@ func main() {
 			}
 
 			listenAddress := v.GetString(flagListenAddr)
+			redirectAddress := v.GetString(flagRedirectAddr)
+			publicLocation := v.GetString(flagPublicLocation)
 			rootPath := v.GetString(flagRootPath)
 
 			root := afero.NewBasePathFs(afero.NewReadOnlyFs(afero.NewOsFs()), rootPath)
@@ -262,7 +278,7 @@ func main() {
 				ClientCAs:    clientCAs,
 			}
 
-			httpServer := &http.Server{
+			httpsServer := &http.Server{
 				Addr:      listenAddress,
 				TLSConfig: tlsConfig,
 				ErrorLog:  log.WrapStandardLogger(logger),
@@ -429,8 +445,30 @@ func main() {
 					server.ServeFile(w, r, root, p, fi.ModTime(), true)
 				}),
 			}
+			//
+			if len(redirectAddress) > 0 && len(publicLocation) > 0 {
+				httpServer := &http.Server{
+					Addr:     redirectAddress,
+					ErrorLog: log.WrapStandardLogger(logger),
+					Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						//
+						icebergTraceID := newTraceID()
+						//
+						_ = logger.Log("Redirecting request", map[string]interface{}{
+							"iceberg_trace_id": icebergTraceID,
+							"url":              r.URL.String(),
+							"target":           publicLocation,
+						})
+						http.Redirect(w, r, publicLocation, http.StatusSeeOther)
+						return
+					}),
+				}
+				_, _ = fmt.Fprintf(os.Stderr, "Redirecting %q to %q\n", redirectAddress, publicLocation)
+				go func() { httpServer.ListenAndServe() }()
+			}
+			//
 			_, _ = fmt.Fprintf(os.Stderr, "Listening on %q\n", listenAddress)
-			return httpServer.ListenAndServeTLS("", "")
+			return httpsServer.ListenAndServeTLS("", "")
 		},
 	}
 	initFlags(serveCommand.Flags())

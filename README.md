@@ -24,6 +24,8 @@ Flags:
   -h, --help                      help for serve
   -l, --log string                path to the log output.  Defaults to stdout. (default "-")
   -p, --policy string             path to the policy file.
+      --public-location string    the public location of the server used for redirects
+      --redirect string           address that iceberg will listen to and redirect requests to the public location
   -r, --root string               path to the document root served
       --server-cert string        path to server public cert
       --server-key string         path to server private key
