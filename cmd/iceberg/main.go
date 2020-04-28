@@ -48,6 +48,11 @@ const (
 	flagPolicyFormat = "format"
 	flagPolicyPath   = "policy"
 	//
+	flagTimeoutRead  = "timeout-read"
+	flagTimeoutWrite = "timeout-write"
+	flagTimeoutIdle  = "timeout-idle"
+
+	//
 	flagLogPath = "log"
 )
 
@@ -63,6 +68,13 @@ func initFlags(flag *pflag.FlagSet) {
 	flag.StringP(flagTemplatePath, "t", "", "path to the template file used during directory listing")
 	flag.StringP(flagLogPath, "l", "-", "path to the log output.  Defaults to stdout.")
 	initPolicyFlags(flag)
+	initTimeoutFlags(flag)
+}
+
+func initTimeoutFlags(flag *pflag.FlagSet) {
+	flag.String(flagTimeoutRead, "5m", "maximum duration for reading the entire request")
+	flag.String(flagTimeoutWrite, "5m", "maximum duration before timing out writes of the response")
+	flag.String(flagTimeoutIdle, "5m", " maximum amount of time to wait for the next request when keep-alives are enabled")
 }
 
 func initPolicyFlags(flag *pflag.FlagSet) {
@@ -122,6 +134,39 @@ func checkConfig(v *viper.Viper) error {
 	logPath := v.GetString(flagLogPath)
 	if len(logPath) == 0 {
 		return fmt.Errorf("log path is missing")
+	}
+	timeoutRead := v.GetString(flagTimeoutRead)
+	if len(timeoutRead) == 0 {
+		return fmt.Errorf("read timeout is missing")
+	}
+	timeoutReadDuration, err := time.ParseDuration(timeoutRead)
+	if err != nil {
+		return fmt.Errorf("error parsing read timeout: %w", err)
+	}
+	if timeoutReadDuration <= 5*time.Second || timeoutReadDuration >= 15*time.Minute {
+		return fmt.Errorf("invalid read timeout %q, must be greater than 5 seconds and less than 15 minutes.", timeoutReadDuration)
+	}
+	timeoutWrite := v.GetString(flagTimeoutWrite)
+	if len(timeoutWrite) == 0 {
+		return fmt.Errorf("write timeout is missing")
+	}
+	timeoutWriteDuration, err := time.ParseDuration(timeoutWrite)
+	if err != nil {
+		return fmt.Errorf("error parsing write timeout: %w", err)
+	}
+	if timeoutWriteDuration <= 5*time.Second || timeoutWriteDuration >= 15*time.Minute {
+		return fmt.Errorf("invalid write timeout %q, must be greater than 5 seconds and less than 15 minutes.")
+	}
+	timeoutIdle := v.GetString(flagTimeoutIdle)
+	if len(timeoutIdle) == 0 {
+		return fmt.Errorf("idle timeout is missing")
+	}
+	timeoutIdleDuration, err := time.ParseDuration(timeoutIdle)
+	if err != nil {
+		return fmt.Errorf("error parsing idle timeout: %w", err)
+	}
+	if timeoutIdleDuration <= 5*time.Second || timeoutIdleDuration >= 15*time.Minute {
+		return fmt.Errorf("invalid idle timeout %q, must be greater than 5 seconds and less than 15 minutes.")
 	}
 	return nil
 }
@@ -279,9 +324,12 @@ func main() {
 			}
 
 			httpsServer := &http.Server{
-				Addr:      listenAddress,
-				TLSConfig: tlsConfig,
-				ErrorLog:  log.WrapStandardLogger(logger),
+				Addr:         listenAddress,
+				IdleTimeout:  v.GetDuration(flagTimeoutIdle),
+				ReadTimeout:  v.GetDuration(flagTimeoutRead),
+				WriteTimeout: v.GetDuration(flagTimeoutWrite),
+				TLSConfig:    tlsConfig,
+				ErrorLog:     log.WrapStandardLogger(logger),
 				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					//
 					icebergTraceID := newTraceID()
@@ -459,11 +507,19 @@ func main() {
 						http.Redirect(w, r, publicLocation, http.StatusSeeOther)
 					}),
 				}
-				_, _ = fmt.Fprintf(os.Stderr, "Redirecting %q to %q\n", redirectAddress, publicLocation)
+				_ = logger.Log("Redirecting http to https", map[string]interface{}{
+					"source": redirectAddress,
+					"target": publicLocation,
+				})
 				go func() { _ = httpServer.ListenAndServe() }()
 			}
 			//
-			_, _ = fmt.Fprintf(os.Stderr, "Listening on %q\n", listenAddress)
+			_ = logger.Log("Starting server", map[string]interface{}{
+				"addr":         listenAddress,
+				"idleTimeout":  httpsServer.IdleTimeout.String(),
+				"readTimeout":  httpsServer.ReadTimeout.String(),
+				"writeTimeout": httpsServer.WriteTimeout.String(),
+			})
 			return httpsServer.ListenAndServeTLS("", "")
 		},
 	}
