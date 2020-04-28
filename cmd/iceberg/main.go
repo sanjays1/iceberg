@@ -271,6 +271,14 @@ func main() {
 					icebergTraceID := newTraceID()
 					//
 					peerCertificates := r.TLS.PeerCertificates
+					if len(peerCertificates) == 0 {
+						_ = logger.Log("Missing client certificate", map[string]interface{}{
+							"iceberg_trace_id": icebergTraceID,
+							"url":              r.URL.String(),
+						})
+						http.Error(w, "Missing client certificate", http.StatusBadRequest)
+						return
+					}
 					intermediates := x509.NewCertPool()
 					for _, c := range peerCertificates[1:] {
 						intermediates.AddCert(c)
@@ -281,17 +289,17 @@ func main() {
 						KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 					})
 					if err != nil {
-						_ = logger.Log("Certificate Denied", map[string]interface{}{
+						_ = logger.Log("Certificate denied", map[string]interface{}{
 							"iceberg_trace_id": icebergTraceID,
 							"url":              r.URL.String(),
 							"error":            err.Error(),
 							"subjects":         certs.Subjects(peerCertificates),
 							"issuers":          certs.Issuers(peerCertificates),
 						})
-						http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+						http.Error(w, "Could not verify client certificate", http.StatusForbidden)
 						return
 					} else {
-						_ = logger.Log("Certificate Verified", map[string]interface{}{
+						_ = logger.Log("Certificate verified", map[string]interface{}{
 							"iceberg_trace_id": icebergTraceID,
 							"url":              r.URL.String(),
 							"subjects":         certs.Subjects(peerCertificates),
@@ -320,7 +328,7 @@ func main() {
 
 					// If path is not clean
 					if !server.CheckPath(p) {
-						_ = logger.Log("Invalid Path", map[string]interface{}{
+						_ = logger.Log("Invalid path", map[string]interface{}{
 							"user_dn":          user.DistinguishedName(),
 							"iceberg_trace_id": icebergTraceID,
 							"url":              r.URL.String(),
@@ -331,7 +339,7 @@ func main() {
 					}
 
 					if !accessPolicyDocument.Evaluate(p, user) {
-						_ = logger.Log("Access Denied", map[string]interface{}{
+						_ = logger.Log("Access denied", map[string]interface{}{
 							"user_dn":          user.DistinguishedName(),
 							"iceberg_trace_id": icebergTraceID,
 							"url":              r.URL.String(),
@@ -339,7 +347,7 @@ func main() {
 						http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 						return
 					} else {
-						_ = logger.Log("Access Allowed", map[string]interface{}{
+						_ = logger.Log("Access allowed", map[string]interface{}{
 							"user_dn":          user.DistinguishedName(),
 							"iceberg_trace_id": icebergTraceID,
 							"url":              r.URL.String(),
@@ -356,7 +364,7 @@ func main() {
 							http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 							return
 						}
-						_ = logger.Log("Error Stating File", map[string]interface{}{
+						_ = logger.Log("Error stating file", map[string]interface{}{
 							"path":             p,
 							"iceberg_trace_id": icebergTraceID,
 						})
