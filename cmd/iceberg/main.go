@@ -451,20 +451,16 @@ func main() {
 					Addr:     redirectAddress,
 					ErrorLog: log.WrapStandardLogger(logger),
 					Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						//
-						icebergTraceID := newTraceID()
-						//
 						_ = logger.Log("Redirecting request", map[string]interface{}{
-							"iceberg_trace_id": icebergTraceID,
+							"iceberg_trace_id": newTraceID(),
 							"url":              r.URL.String(),
 							"target":           publicLocation,
 						})
 						http.Redirect(w, r, publicLocation, http.StatusSeeOther)
-						return
 					}),
 				}
 				_, _ = fmt.Fprintf(os.Stderr, "Redirecting %q to %q\n", redirectAddress, publicLocation)
-				go func() { httpServer.ListenAndServe() }()
+				go func() { _ = httpServer.ListenAndServe() }()
 			}
 			//
 			_, _ = fmt.Fprintf(os.Stderr, "Listening on %q\n", listenAddress)
