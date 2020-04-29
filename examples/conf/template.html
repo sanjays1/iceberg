@@ -32,7 +32,7 @@
     {{end}}
     {{range .Files}}
     <tr>
-      <td>File</td>
+      <td>{{.Type}}</td>
       <td>{{.ModTime}}</td>
       <td style="text-align:right;">{{.Size}}</td>
       <td><a href="{{.Path}}">{{.Path}}</a></td>

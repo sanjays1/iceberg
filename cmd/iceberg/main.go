@@ -16,6 +16,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,6 +58,13 @@ const (
 	flagLogPath = "log"
 )
 
+type File struct {
+	ModTime string
+	Size    int64
+	Type    string
+	Path    string
+}
+
 func initFlags(flag *pflag.FlagSet) {
 	flag.String(flagPublicLocation, "", "the public location of the server used for redirects")
 	flag.StringP(flagListenAddr, "a", ":8080", "address that iceberg will listen on")
@@ -72,7 +81,7 @@ func initFlags(flag *pflag.FlagSet) {
 }
 
 func initTimeoutFlags(flag *pflag.FlagSet) {
-	flag.String(flagTimeoutRead, "5m", "maximum duration for reading the entire request")
+	flag.String(flagTimeoutRead, "15m", "maximum duration for reading the entire request")
 	flag.String(flagTimeoutWrite, "5m", "maximum duration before timing out writes of the response")
 	flag.String(flagTimeoutIdle, "5m", "maximum amount of time to wait for the next request when keep-alives are enabled")
 }
@@ -143,8 +152,8 @@ func checkConfig(v *viper.Viper) error {
 	if err != nil {
 		return fmt.Errorf("error parsing read timeout: %w", err)
 	}
-	if timeoutReadDuration <= 5*time.Second || timeoutReadDuration >= 15*time.Minute {
-		return fmt.Errorf("invalid read timeout %q, must be greater than 5 seconds and less than 15 minutes.", timeoutReadDuration)
+	if timeoutReadDuration < 5*time.Second || timeoutReadDuration > 30*time.Minute {
+		return fmt.Errorf("invalid read timeout %q, must be greater than or equal to 5 seconds and less than or equal to 30 minutes", timeoutReadDuration)
 	}
 	timeoutWrite := v.GetString(flagTimeoutWrite)
 	if len(timeoutWrite) == 0 {
@@ -154,8 +163,8 @@ func checkConfig(v *viper.Viper) error {
 	if err != nil {
 		return fmt.Errorf("error parsing write timeout: %w", err)
 	}
-	if timeoutWriteDuration <= 5*time.Second || timeoutWriteDuration >= 15*time.Minute {
-		return fmt.Errorf("invalid write timeout %q, must be greater than 5 seconds and less than 15 minutes.")
+	if timeoutWriteDuration < 5*time.Second || timeoutWriteDuration > 30*time.Minute {
+		return fmt.Errorf("invalid write timeout %q, must be greater than or equal to 5 seconds and less than or equal to 30 minutes", timeoutWriteDuration)
 	}
 	timeoutIdle := v.GetString(flagTimeoutIdle)
 	if len(timeoutIdle) == 0 {
@@ -165,8 +174,8 @@ func checkConfig(v *viper.Viper) error {
 	if err != nil {
 		return fmt.Errorf("error parsing idle timeout: %w", err)
 	}
-	if timeoutIdleDuration <= 5*time.Second || timeoutIdleDuration >= 15*time.Minute {
-		return fmt.Errorf("invalid idle timeout %q, must be greater than 5 seconds and less than 15 minutes.")
+	if timeoutIdleDuration < 5*time.Second || timeoutIdleDuration > 30*time.Minute {
+		return fmt.Errorf("invalid idle timeout %q, must be greater than or equal to 5 seconds and less than or equal to 30 minutes", timeoutIdleDuration)
 	}
 	return nil
 }
@@ -456,30 +465,52 @@ func main() {
 								http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 								return
 							}
-							files := make([]struct {
-								ModTime string //lint:ignore U1000 slice is appended to
-								Size    int64  //lint:ignore U1000 slice is appended to
-								Path    string //lint:ignore U1000 slice is appended to
-							}, 0, len(fileInfos))
+							//
+							files := make([]File, 0, len(fileInfos))
 							for _, fi := range fileInfos {
-								files = append(files, struct {
-									ModTime string
-									Size    int64
-									Path    string
-								}{
+								fileType := "File"
+								if fi.IsDir() {
+									fileType = "Directory"
+								}
+								files = append(files, File{
 									ModTime: fi.ModTime().In(time.UTC).Format(time.RFC3339),
 									Size:    fi.Size(),
 									Path:    filepath.Join(p, fi.Name()),
+									Type:    fileType,
 								})
 							}
+							// sort files
+							sort.SliceStable(files, func(i, j int) bool {
+								iType := files[i].Type
+								jType := files[j].Type
+								if iType != jType {
+									if iType == "Directory" {
+										return true
+									}
+									if jType == "Directory" {
+										return false
+									}
+								}
+								iStr := filepath.Base(files[i].Path)
+								jStr := filepath.Base(files[j].Path)
+								iValue, iErr := strconv.Atoi(iStr)
+								jValue, jErr := strconv.Atoi(jStr)
+								if iErr == nil && jErr == nil {
+									return iValue < jValue
+								}
+								if iErr == nil {
+									return true
+								}
+								if jErr == nil {
+									return false
+								}
+								return strings.Compare(iStr, jStr) <= 0
+							})
+							//
 							server.ServeTemplate(w, r, directoryListingTemplate, struct {
 								Up        string
 								Directory string
-								Files     []struct {
-									ModTime string //lint:ignore U1000 slice is set
-									Size    int64  //lint:ignore U1000 slice is set
-									Path    string //lint:ignore U1000 slice is set
-								}
+								Files     []File
 							}{
 								Up:        filepath.Dir(p),
 								Directory: p,
