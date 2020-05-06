@@ -17,9 +17,15 @@ import (
 	"github.com/spf13/afero"
 )
 
-func ServeFile(w http.ResponseWriter, r *http.Request, fs afero.Fs, p string, modtime time.Time, download bool) {
+func ServeFile(w http.ResponseWriter, r *http.Request, fs afero.Fs, p string, modtime time.Time, download bool, errorHandler func(w http.ResponseWriter, r *http.Request, err error) error) {
 	f, err := fs.Open(p)
 	if err != nil {
+		if errorHandler != nil {
+			err = errorHandler(w, r, err)
+			if err == nil {
+				return
+			}
+		}
 		_, _ = fmt.Fprintln(os.Stderr, fmt.Errorf("error opening file from path %q: %w", p, err).Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

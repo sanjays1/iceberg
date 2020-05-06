@@ -22,7 +22,7 @@ const (
 )
 
 var (
-	StatementDefaultAllow = Statement{
+	AccessStatementDefaultAllow = AccessStatement{
 		ID:       "DefaultAllow",
 		Effect:   Allow,
 		Paths:    []string{Wildcard},
@@ -32,33 +32,33 @@ var (
 )
 
 var (
-	PolicyDefaultAllow = Policy{
-		Statements: []Statement{
-			StatementDefaultAllow,
+	AccessPolicyDefaultAllow = AccessPolicy{
+		Statements: []AccessStatement{
+			AccessStatementDefaultAllow,
 		},
 	}
-	PolicyDefaultDeny = Policy{
-		Statements: []Statement{},
+	AccessPolicyDefaultDeny = AccessPolicy{
+		Statements: []AccessStatement{},
 	}
 )
 
-type Policy struct {
-	ID         string      `json:"id" yaml:"id"`
-	Statements []Statement `json:"statements" yaml:"statements"`
+type AccessPolicy struct {
+	ID         string            `json:"id" yaml:"id"`
+	Statements []AccessStatement `json:"statements" yaml:"statements"`
 }
 
-func (p Policy) Clone() Policy {
-	statements := make([]Statement, 0, len(p.Statements))
+func (p AccessPolicy) Clone() AccessPolicy {
+	statements := make([]AccessStatement, 0, len(p.Statements))
 	for _, s := range p.Statements {
 		statements = append(statements, s.Clone())
 	}
-	return Policy{
+	return AccessPolicy{
 		ID:         p.ID,
 		Statements: statements,
 	}
 }
 
-func (p Policy) Validate() error {
+func (p AccessPolicy) Validate() error {
 	for i, s := range p.Statements {
 		if err := s.Validate(); err != nil {
 			return fmt.Errorf("statement %d (%q) is invalid: %w", i, s.ID, err)
@@ -67,7 +67,7 @@ func (p Policy) Validate() error {
 	return nil
 }
 
-func (p *Policy) Evaluate(path string, user *User) bool {
+func (p AccessPolicy) Evaluate(path string, user *User) bool {
 	allow := false
 	for _, statement := range p.Statements {
 		if !statement.MatchPath(path) {
@@ -94,26 +94,26 @@ func (p *Policy) Evaluate(path string, user *User) bool {
 	return allow
 }
 
-func Parse(path string, format string) (*Policy, error) {
+func ParseAccessPolicy(path string, format string) (*AccessPolicy, error) {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("error reading policy from path %q: %w", path, err)
+		return nil, fmt.Errorf("error reading access policy from path %q: %w", path, err)
 	}
 	if format == "json" {
-		p := &Policy{}
+		p := &AccessPolicy{}
 		err = json.Unmarshal(b, p)
 		if err != nil {
-			return nil, fmt.Errorf("error unmarshaling policy from path %q: %w", path, err)
+			return nil, fmt.Errorf("error unmarshaling access policy from path %q: %w", path, err)
 		}
 		return p, nil
 	}
 	if format == "yaml" {
-		p := &Policy{}
+		p := &AccessPolicy{}
 		err = yaml.Unmarshal(b, p)
 		if err != nil {
-			return nil, fmt.Errorf("error unmarshaling policy from path %q: %w", path, err)
+			return nil, fmt.Errorf("error unmarshaling access policy from path %q: %w", path, err)
 		}
 		return p, nil
 	}
-	return nil, fmt.Errorf("unknown policy format %q", format)
+	return nil, fmt.Errorf("unknown access policy format %q", format)
 }

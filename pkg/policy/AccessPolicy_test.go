@@ -45,7 +45,7 @@ func TestPolicy(t *testing.T) {
 	u := loadTestUser()
 	//
 	t.Run("DefaultAllow", func(t *testing.T) {
-		p := PolicyDefaultAllow
+		p := AccessPolicyDefaultAllow
 		//
 		assert.True(t, p.Evaluate("/hello/world", u))
 		assert.True(t, p.Evaluate("/", u))
@@ -57,7 +57,7 @@ func TestPolicy(t *testing.T) {
 	})
 	//
 	t.Run("DefaultDeny", func(t *testing.T) {
-		p := PolicyDefaultDeny
+		p := AccessPolicyDefaultDeny
 		//
 		assert.False(t, p.Evaluate("/hello/world", u))
 		assert.False(t, p.Evaluate("/", u))
@@ -69,8 +69,8 @@ func TestPolicy(t *testing.T) {
 	})
 	//
 	t.Run("DenyPath", func(t *testing.T) {
-		p := PolicyDefaultAllow
-		p.Statements = append(p.Statements, Statement{
+		p := AccessPolicyDefaultAllow
+		p.Statements = append(p.Statements, AccessStatement{
 			Effect: Deny,
 			Paths:  []string{filepath.Join("/", "hello", "world")},
 			Users:  []string{"*"},
@@ -82,8 +82,8 @@ func TestPolicy(t *testing.T) {
 		//
 	})
 	t.Run("DenyPathNotUser", func(t *testing.T) {
-		p := PolicyDefaultAllow
-		p.Statements = append(p.Statements, Statement{
+		p := AccessPolicyDefaultAllow
+		p.Statements = append(p.Statements, AccessStatement{
 			Effect:   Deny,
 			Paths:    []string{filepath.Join("/", "hello", "world")},
 			NotUsers: []string{"abc"},

@@ -8,7 +8,7 @@
 
 ## Usage
 
-The `iceberg` program has 3 sub commands: `help`, `serve`, and `validate-policy`.  Use `iceberg serve` to launch the server and `iceberg validate-policy` to validate a policy file.  Below is the usage for the `iceberg serve` command.
+The `iceberg` program has 3 sub commands: `help`, `serve`, and `validate-access-policy`.  Use `iceberg serve` to launch the server and `iceberg validate-access-policy` to validate a policy file.  Below is the usage for the `iceberg serve` command.
 
 ```text
 start the iceberg server
@@ -17,22 +17,26 @@ Usage:
   iceberg serve [flags]
 
 Flags:
-  -a, --addr string               address that iceberg will listen on (default ":8080")
-      --client-ca string          path to CA bundle for client authentication
-      --client-ca-format string   format of the CA bundle for client authentication, either pkcs7 or pem (default "pkcs7")
-  -f, --format string             format of the policy file (default "json")
-  -h, --help                      help for serve
-  -l, --log string                path to the log output.  Defaults to stdout. (default "-")
-  -p, --policy string             path to the policy file.
-      --public-location string    the public location of the server used for redirects
-      --redirect string           address that iceberg will listen to and redirect requests to the public location
-  -r, --root string               path to the document root served
-      --server-cert string        path to server public cert
-      --server-key string         path to server private key
-  -t, --template string           path to the template file used during directory listing
-      --timeout-idle string       maximum amount of time to wait for the next request when keep-alives are enabled (default "5m")
-      --timeout-read string       maximum duration for reading the entire request (default "15m")
-      --timeout-write string      maximum duration before timing out writes of the response (default "5m")
+  -p, --access-policy string           path to the policy file.
+  -f, --access-policy-format string    format of the policy file (default "json")
+  -a, --addr string                    address that iceberg will listen on (default ":8080")
+      --behavior-not-found string      default behavior when a file is not found.  One of: redirect,none (default "none")
+      --client-ca string               path to CA bundle for client authentication
+      --client-ca-format string        format of the CA bundle for client authentication, either pkcs7 or pem (default "pkcs7")
+  -h, --help                           help for serve
+  -l, --log string                     path to the log output.  Defaults to stdout. (default "-")
+      --public-location string         the public location of the server used for redirects
+      --redirect string                address that iceberg will listen to and redirect requests to the public location
+  -r, --root string                    path to the document root served
+      --server-cert string             path to server public cert
+      --server-key string              path to server private key
+  -t, --template string                path to the template file used during directory listing
+      --timeout-idle string            maximum amount of time to wait for the next request when keep-alives are enabled (default "5m")
+      --timeout-read string            maximum duration for reading the entire request (default "15m")
+      --timeout-write string           maximum duration before timing out writes of the response (default "5m")
+      --tls-curve-preferences string   curve preferences (default "X25519,CurveP256,CurveP384,CurveP521")
+      --tls-max-version string         maximum TLS version accepted for requests (default "1.3")
+      --tls-min-version string         minimum TLS version accepted for requests (default "1.0")
 ```
 
 ### Network Encryption
@@ -129,7 +133,8 @@ iceberg serve \
 --client-ca temp/certs.p7b \
 --root examples/public \
 -t examples/conf/template.html \
---policy examples/conf/example.json
+--access-policy examples/conf/example.json \
+--behavior-not-found redirect
 ```
 
 The below policy statement allows access to any authenticated user and then limits access to `/secure` to a limited set of users.

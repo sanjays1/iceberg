@@ -12,7 +12,7 @@ import (
 	"fmt"
 )
 
-type Statement struct {
+type AccessStatement struct {
 	ID       string   `json:"id" yaml:"id"`
 	Effect   string   `json:"effect" yaml:"effect"`
 	Paths    []string `json:"paths" yaml:"paths"`
@@ -20,8 +20,8 @@ type Statement struct {
 	NotUsers []string `json:"not_users,omitempty" yaml:"not_users,omitempty"`
 }
 
-func (s Statement) Clone() Statement {
-	return Statement{
+func (s AccessStatement) Clone() AccessStatement {
+	return AccessStatement{
 		ID:       s.ID,
 		Effect:   s.Effect,
 		Paths:    append([]string{}, s.Paths...),
@@ -30,7 +30,7 @@ func (s Statement) Clone() Statement {
 	}
 }
 
-func (s Statement) Validate() error {
+func (s AccessStatement) Validate() error {
 	if s.Effect != Allow && s.Effect != Deny {
 		return fmt.Errorf("invalid effect %q, expecting %q or %q", s.Effect, Allow, Deny)
 	}
@@ -46,7 +46,7 @@ func (s Statement) Validate() error {
 	return nil
 }
 
-func (s Statement) MatchPath(path string) bool {
+func (s AccessStatement) MatchPath(path string) bool {
 	for _, candidate := range s.Paths {
 		if Match(candidate, path) {
 			return true
@@ -55,7 +55,7 @@ func (s Statement) MatchPath(path string) bool {
 	return false
 }
 
-func (s Statement) MatchUser(user *User) bool {
+func (s AccessStatement) MatchUser(user *User) bool {
 	dn := user.DistinguishedName()
 	for _, candidate := range s.Users {
 		if Match(candidate, dn) {
@@ -65,7 +65,7 @@ func (s Statement) MatchUser(user *User) bool {
 	return false
 }
 
-func (s Statement) MatchNotUser(user *User) bool {
+func (s AccessStatement) MatchNotUser(user *User) bool {
 	dn := user.DistinguishedName()
 	for _, candidate := range s.NotUsers {
 		if Match(candidate, dn) {

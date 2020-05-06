@@ -34,6 +34,86 @@ import (
 )
 
 const (
+	TLSVersion1_0 = "1.0"
+	TLSVersion1_1 = "1.1"
+	TLSVersion1_2 = "1.2"
+	TLSVersion1_3 = "1.3"
+)
+
+var (
+	SupportedTLSVersions = []string{
+		TLSVersion1_0,
+		TLSVersion1_1,
+		TLSVersion1_2,
+		TLSVersion1_3,
+	}
+	TLSVersionIdentifiers = map[string]uint16{
+		TLSVersion1_0: tls.VersionTLS10,
+		TLSVersion1_1: tls.VersionTLS11,
+		TLSVersion1_2: tls.VersionTLS12,
+		TLSVersion1_3: tls.VersionTLS13,
+	}
+)
+
+const (
+	CurveP256 = "CurveP256"
+	CurveP384 = "CurveP384"
+	CurveP521 = "CurveP521"
+	X25519    = "X25519"
+)
+
+const (
+	BehaviorRedirect = "redirect"
+	BehaviorNone     = "none"
+)
+
+var (
+	Behaviors = []string{
+		BehaviorRedirect,
+		BehaviorNone,
+	}
+)
+
+var (
+	DefaultCurveIDs = []string{
+		X25519,
+		CurveP256,
+		CurveP384,
+		CurveP521,
+	}
+	SupportedCurveIDs = []string{
+		CurveP256,
+		CurveP384,
+		CurveP521,
+		X25519,
+	}
+	TLSCurveIdentifiers = map[string]tls.CurveID{
+		CurveP256: tls.CurveP256,
+		CurveP384: tls.CurveP384,
+		CurveP521: tls.CurveP521,
+		X25519:    tls.X25519,
+	}
+)
+
+func stringSliceContains(stringSlice []string, value string) bool {
+	for _, x := range stringSlice {
+		if value == x {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceIndex(stringSlice []string, value string) int {
+	for i, x := range stringSlice {
+		if value == x {
+			return i
+		}
+	}
+	return -1
+}
+
+const (
 	flagListenAddr     = "addr"
 	flagRedirectAddr   = "redirect"
 	flagPublicLocation = "public-location"
@@ -47,13 +127,19 @@ const (
 	flagRootPath     = "root"
 	flagTemplatePath = "template"
 	//
-	flagPolicyFormat = "format"
-	flagPolicyPath   = "policy"
+	flagAccessPolicyFormat = "access-policy-format"
+	flagAccessPolicyPath   = "access-policy"
 	//
 	flagTimeoutRead  = "timeout-read"
 	flagTimeoutWrite = "timeout-write"
 	flagTimeoutIdle  = "timeout-idle"
-
+	//
+	flagTLSMinVersion = "tls-min-version"
+	flagTLSMaxVersion = "tls-max-version"
+	//flagTLSCipherSuites = "tls-cipher-suites"
+	flagTLSCurvePreferences = "tls-curve-preferences"
+	//
+	flagBehaviorNotFound = "behavior-not-found"
 	//
 	flagLogPath = "log"
 )
@@ -76,8 +162,10 @@ func initFlags(flag *pflag.FlagSet) {
 	flag.StringP(flagRootPath, "r", "", "path to the document root served")
 	flag.StringP(flagTemplatePath, "t", "", "path to the template file used during directory listing")
 	flag.StringP(flagLogPath, "l", "-", "path to the log output.  Defaults to stdout.")
+	flag.String(flagBehaviorNotFound, BehaviorNone, "default behavior when a file is not found.  One of: "+strings.Join(Behaviors, ","))
 	initPolicyFlags(flag)
 	initTimeoutFlags(flag)
+	initTLSFlags(flag)
 }
 
 func initTimeoutFlags(flag *pflag.FlagSet) {
@@ -86,9 +174,15 @@ func initTimeoutFlags(flag *pflag.FlagSet) {
 	flag.String(flagTimeoutIdle, "5m", "maximum amount of time to wait for the next request when keep-alives are enabled")
 }
 
+func initTLSFlags(flag *pflag.FlagSet) {
+	flag.String(flagTLSMinVersion, TLSVersion1_0, "minimum TLS version accepted for requests")
+	flag.String(flagTLSMaxVersion, TLSVersion1_3, "maximum TLS version accepted for requests")
+	flag.String(flagTLSCurvePreferences, strings.Join(DefaultCurveIDs, ","), "curve preferences")
+}
+
 func initPolicyFlags(flag *pflag.FlagSet) {
-	flag.StringP(flagPolicyFormat, "f", "json", "format of the policy file")
-	flag.StringP(flagPolicyPath, "p", "", "path to the policy file.")
+	flag.StringP(flagAccessPolicyFormat, "f", "json", "format of the policy file")
+	flag.StringP(flagAccessPolicyPath, "p", "", "path to the policy file.")
 }
 
 func initViper(cmd *cobra.Command) (*viper.Viper, error) {
@@ -137,8 +231,8 @@ func checkConfig(v *viper.Viper) error {
 	if len(templatePath) == 0 {
 		return fmt.Errorf("template path is missing")
 	}
-	if err := checkPolicyConfig(v); err != nil {
-		return fmt.Errorf("invalid policy configuration: %w", err)
+	if err := checkAccessPolicyConfig(v); err != nil {
+		return fmt.Errorf("invalid access policy configuration: %w", err)
 	}
 	logPath := v.GetString(flagLogPath)
 	if len(logPath) == 0 {
@@ -177,17 +271,56 @@ func checkConfig(v *viper.Viper) error {
 	if timeoutIdleDuration < 5*time.Second || timeoutIdleDuration > 30*time.Minute {
 		return fmt.Errorf("invalid idle timeout %q, must be greater than or equal to 5 seconds and less than or equal to 30 minutes", timeoutIdleDuration)
 	}
+	if err := checkTLSConfig(v); err != nil {
+		return fmt.Errorf("error with TLS configuration: %w", err)
+	}
 	return nil
 }
 
-func checkPolicyConfig(v *viper.Viper) error {
-	policyFormat := v.GetString(flagPolicyFormat)
-	if len(policyFormat) == 0 {
-		return fmt.Errorf("policy format is missing")
+func checkTLSConfig(v *viper.Viper) error {
+	minVersion := v.GetString(flagTLSMinVersion)
+	minVersionIndex := stringSliceIndex(SupportedTLSVersions, minVersion)
+	if minVersionIndex == -1 {
+		return fmt.Errorf("invalid minimum TLS version %q", minVersion)
 	}
-	policyPath := v.GetString(flagPolicyPath)
-	if len(policyPath) == 0 {
-		return fmt.Errorf("policy path is missing")
+	maxVersion := v.GetString(flagTLSMaxVersion)
+	maxVersionIndex := stringSliceIndex(SupportedTLSVersions, maxVersion)
+	if maxVersionIndex == -1 {
+		return fmt.Errorf("invalid maximum TLS version %q", maxVersion)
+	}
+	if minVersionIndex > maxVersionIndex {
+		return fmt.Errorf("invalid TLS versions, minium version %q is greater than maximum version %q", minVersion, maxVersion)
+	}
+	curvePreferencesString := v.GetString(flagTLSCurvePreferences)
+	if len(curvePreferencesString) == 0 {
+		return fmt.Errorf("TLS curve preferences are missing")
+	}
+	curvePreferences := strings.Split(curvePreferencesString, ",")
+	for _, curveID := range curvePreferences {
+		if !stringSliceContains(SupportedCurveIDs, curveID) {
+			return fmt.Errorf("invalid curve preference %q", curveID)
+		}
+	}
+	/*
+		maxVersionIndex := stringSliceContains
+		if maxVersionIndex == -1 {
+			return fmt.Errorf("invalid maximum TLS version %q", maxVersion)
+		}
+		if minVersionIndex > maxVersionIndex {
+			return fmt.Errorf("invalid TLS versions, minium version %q is greater than maximum version %q", minVersion, maxVersion)
+		}
+	*/
+	return nil
+}
+
+func checkAccessPolicyConfig(v *viper.Viper) error {
+	acessPolicyFormat := v.GetString(flagAccessPolicyFormat)
+	if len(acessPolicyFormat) == 0 {
+		return fmt.Errorf("access policy format is missing")
+	}
+	acessPolicyPath := v.GetString(flagAccessPolicyPath)
+	if len(acessPolicyPath) == 0 {
+		return fmt.Errorf("access policy path is missing")
 	}
 	return nil
 }
@@ -226,6 +359,35 @@ func initLogger(path string) (*log.SimpleLogger, error) {
 	return log.NewSimpleLogger(f), nil
 }
 
+func getTLSVersion(r *http.Request) string {
+	for k, v := range TLSVersionIdentifiers {
+		if v == r.TLS.Version {
+			return k
+		}
+	}
+	return ""
+}
+
+func initTLSConfig(v *viper.Viper, serverKeyPair tls.Certificate, clientCAs *x509.CertPool, minVersion string, maxVersion string) *tls.Config {
+
+	config := &tls.Config{
+		Certificates: []tls.Certificate{serverKeyPair},
+		ClientAuth:   tls.RequireAnyClientCert,
+		ClientCAs:    clientCAs,
+		MinVersion:   TLSVersionIdentifiers[minVersion],
+		MaxVersion:   TLSVersionIdentifiers[maxVersion],
+	}
+
+	if tlsCurvePreferencesString := v.GetString(flagTLSCurvePreferences); len(tlsCurvePreferencesString) > 0 {
+		curvePreferences := make([]tls.CurveID, 0)
+		for _, str := range strings.Split(tlsCurvePreferencesString, ",") {
+			curvePreferences = append(curvePreferences, TLSCurveIdentifiers[str])
+		}
+		config.CurvePreferences = curvePreferences
+	}
+	return config
+}
+
 func main() {
 
 	rootCommand := &cobra.Command{
@@ -234,8 +396,8 @@ func main() {
 		Short:                 "iceberg is a file server using client certificate authentication and policy-based access control.",
 	}
 
-	validatePolicyCommand := &cobra.Command{
-		Use:                   `validate-policy [--policy POLICY_FILE] [--policy-format POLICY_FORMAT]`,
+	validateAccessPolicyCommand := &cobra.Command{
+		Use:                   `validate-access-policy [--access-policy POLICY_FILE] [--access-policy-format POLICY_FORMAT]`,
 		DisableFlagsInUseLine: true,
 		Short:                 "validate the iceberg access policy file",
 		SilenceErrors:         true,
@@ -250,11 +412,11 @@ func main() {
 				return cmd.Usage()
 			}
 
-			if errConfig := checkPolicyConfig(v); errConfig != nil {
+			if errConfig := checkAccessPolicyConfig(v); errConfig != nil {
 				return errConfig
 			}
 
-			accessPolicyDocument, err := policy.Parse(v.GetString(flagPolicyPath), v.GetString(flagPolicyFormat))
+			accessPolicyDocument, err := policy.ParseAccessPolicy(v.GetString(flagAccessPolicyPath), v.GetString(flagAccessPolicyFormat))
 			if err != nil {
 				return fmt.Errorf("error loading policy: %w", err)
 			}
@@ -267,7 +429,7 @@ func main() {
 			return nil
 		},
 	}
-	initFlags(validatePolicyCommand.Flags())
+	initFlags(validateAccessPolicyCommand.Flags())
 
 	serveCommand := &cobra.Command{
 		Use:                   `serve [flags]`,
@@ -301,6 +463,21 @@ func main() {
 
 			root := afero.NewBasePathFs(afero.NewReadOnlyFs(afero.NewOsFs()), rootPath)
 
+			directoryListingTemplate, err := loadTemplate(v.GetString(flagTemplatePath))
+			if err != nil {
+				return fmt.Errorf("error loading directory listing template: %w", err)
+			}
+
+			accessPolicyDocument, err := policy.ParseAccessPolicy(v.GetString(flagAccessPolicyPath), v.GetString(flagAccessPolicyFormat))
+			if err != nil {
+				return fmt.Errorf("error loading policy: %w", err)
+			}
+
+			err = accessPolicyDocument.Validate()
+			if err != nil {
+				return fmt.Errorf("error validating policy: %w", err)
+			}
+
 			serverKeyPair, err := tls.LoadX509KeyPair(v.GetString(flagServerCert), v.GetString(flagServerKey))
 			if err != nil {
 				return fmt.Errorf("error loading server key pair: %w", err)
@@ -311,26 +488,13 @@ func main() {
 				return fmt.Errorf("error loading client certificate authority: %w", err)
 			}
 
-			directoryListingTemplate, err := loadTemplate(v.GetString(flagTemplatePath))
-			if err != nil {
-				return fmt.Errorf("error loading directory listing template: %w", err)
-			}
+			tlsMinVersion := v.GetString(flagTLSMinVersion)
 
-			accessPolicyDocument, err := policy.Parse(v.GetString(flagPolicyPath), v.GetString(flagPolicyFormat))
-			if err != nil {
-				return fmt.Errorf("error loading policy: %w", err)
-			}
+			tlsMaxVersion := v.GetString(flagTLSMaxVersion)
 
-			err = accessPolicyDocument.Validate()
-			if err != nil {
-				return fmt.Errorf("error validating policy: %w", err)
-			}
+			tlsConfig := initTLSConfig(v, serverKeyPair, clientCAs, tlsMinVersion, tlsMaxVersion)
 
-			tlsConfig := &tls.Config{
-				Certificates: []tls.Certificate{serverKeyPair},
-				ClientAuth:   tls.RequireAnyClientCert,
-				ClientCAs:    clientCAs,
-			}
+			redirectNotFound := v.GetString(flagBehaviorNotFound) == BehaviorRedirect
 
 			httpsServer := &http.Server{
 				Addr:         listenAddress,
@@ -394,6 +558,7 @@ func main() {
 						"host":             r.Host,
 						"method":           r.Method,
 						"iceberg_trace_id": icebergTraceID,
+						"tls_version":      getTLSVersion(r),
 					})
 
 					// Get path from URL
@@ -434,6 +599,10 @@ func main() {
 								"path":             p,
 								"iceberg_trace_id": icebergTraceID,
 							})
+							if redirectNotFound {
+								http.Redirect(w, r, publicLocation, http.StatusSeeOther)
+								return
+							}
 							http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 							return
 						}
@@ -518,10 +687,10 @@ func main() {
 							})
 							return
 						}
-						server.ServeFile(w, r, root, indexPath, time.Time{}, false)
+						server.ServeFile(w, r, root, indexPath, time.Time{}, false, nil)
 						return
 					}
-					server.ServeFile(w, r, root, p, fi.ModTime(), true)
+					server.ServeFile(w, r, root, p, fi.ModTime(), true, nil)
 				}),
 			}
 			//
@@ -546,17 +715,19 @@ func main() {
 			}
 			//
 			_ = logger.Log("Starting server", map[string]interface{}{
-				"addr":         listenAddress,
-				"idleTimeout":  httpsServer.IdleTimeout.String(),
-				"readTimeout":  httpsServer.ReadTimeout.String(),
-				"writeTimeout": httpsServer.WriteTimeout.String(),
+				"addr":          listenAddress,
+				"idleTimeout":   httpsServer.IdleTimeout.String(),
+				"readTimeout":   httpsServer.ReadTimeout.String(),
+				"writeTimeout":  httpsServer.WriteTimeout.String(),
+				"tlsMinVersion": tlsMinVersion,
+				"tlsMaxVersion": tlsMaxVersion,
 			})
 			return httpsServer.ListenAndServeTLS("", "")
 		},
 	}
 	initFlags(serveCommand.Flags())
 
-	rootCommand.AddCommand(validatePolicyCommand, serveCommand)
+	rootCommand.AddCommand(validateAccessPolicyCommand, serveCommand)
 
 	if err := rootCommand.Execute(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "iceberg: "+err.Error())

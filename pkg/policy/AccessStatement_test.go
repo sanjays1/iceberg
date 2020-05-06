@@ -17,7 +17,7 @@ import (
 func TestStatement(t *testing.T) {
 	u := loadTestUser()
 	t.Run("AllowAll", func(t *testing.T) {
-		s := StatementDefaultAllow
+		s := AccessStatementDefaultAllow
 		//
 		assert.NoError(t, s.Validate())
 		//
@@ -30,7 +30,7 @@ func TestStatement(t *testing.T) {
 	})
 	//
 	t.Run("AllowWildcardPath", func(t *testing.T) {
-		s := Statement{
+		s := AccessStatement{
 			Effect:   Allow,
 			Paths:    []string{Wildcard},
 			Users:    []string{u.DistinguishedName()},
@@ -48,7 +48,7 @@ func TestStatement(t *testing.T) {
 	})
 	//
 	t.Run("AllowPathAndUser", func(t *testing.T) {
-		s := Statement{
+		s := AccessStatement{
 			Effect:   Allow,
 			Paths:    []string{filepath.Join("/", "hello", Wildcard)},
 			Users:    []string{u.DistinguishedName()},
@@ -66,7 +66,7 @@ func TestStatement(t *testing.T) {
 	})
 	//
 	t.Run("DenyPathAndNotUser", func(t *testing.T) {
-		s := Statement{
+		s := AccessStatement{
 			Effect:   Deny,
 			Paths:    []string{filepath.Join("/", "denied")},
 			Users:    []string{},
@@ -82,7 +82,7 @@ func TestStatement(t *testing.T) {
 	})
 	//
 	t.Run("MissingPaths", func(t *testing.T) {
-		s := Statement{
+		s := AccessStatement{
 			Effect:   Allow,
 			Paths:    []string{},
 			Users:    []string{u.DistinguishedName()},
@@ -93,7 +93,7 @@ func TestStatement(t *testing.T) {
 	})
 	//
 	t.Run("MissingUsers", func(t *testing.T) {
-		s := Statement{
+		s := AccessStatement{
 			Effect:   Allow,
 			Paths:    []string{Wildcard},
 			Users:    []string{},
@@ -104,7 +104,7 @@ func TestStatement(t *testing.T) {
 	})
 	//
 	t.Run("UsersAndNotUsers", func(t *testing.T) {
-		s := Statement{
+		s := AccessStatement{
 			Effect:   Allow,
 			Paths:    []string{Wildcard},
 			Users:    []string{Wildcard},
