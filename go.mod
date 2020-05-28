@@ -6,6 +6,7 @@ require (
 	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/gordonklaus/ineffassign v0.0.0-20200309095847-7953dde2c7bf
 	github.com/kisielk/errcheck v1.1.0
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/spf13/afero v1.2.2
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/pflag v1.0.5

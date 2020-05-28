@@ -61,7 +61,7 @@ func (p AccessPolicy) Clone() AccessPolicy {
 func (p AccessPolicy) Validate() error {
 	for i, s := range p.Statements {
 		if err := s.Validate(); err != nil {
-			return fmt.Errorf("statement %d (%q) is invalid: %w", i, s.ID, err)
+			return fmt.Errorf("access statement %d (%q) is invalid: %w", i, s.ID, err)
 		}
 	}
 	return nil

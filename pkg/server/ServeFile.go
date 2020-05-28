@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/afero"
@@ -30,9 +29,5 @@ func ServeFile(w http.ResponseWriter, r *http.Request, fs afero.Fs, p string, mo
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-cache")
-	if download {
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(p)))
-	}
-	http.ServeContent(w, r, filepath.Base(p), modtime, f)
+	ServeData(w, r, p, modtime, download, f)
 }

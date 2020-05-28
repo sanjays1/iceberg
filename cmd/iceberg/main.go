@@ -8,6 +8,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -26,6 +27,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+
+	cachepkg "github.com/patrickmn/go-cache"
 
 	"github.com/deptofdefense/iceberg/pkg/certs"
 	"github.com/deptofdefense/iceberg/pkg/log"
@@ -113,9 +116,19 @@ func stringSliceIndex(stringSlice []string, value string) int {
 	return -1
 }
 
+func merge(in ...map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{}
+	for _, m := range in {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 const (
-	flagListenAddr     = "addr"
-	flagRedirectAddr   = "redirect"
+	flagListenAddress     = "address"
+	flagRedirectAddress   = "redirect"
 	flagPublicLocation = "public-location"
 	//
 	flagServerCert = "server-cert"
@@ -124,11 +137,14 @@ const (
 	flagClientCAFormat = "client-ca-format"
 	flagClientCA       = "client-ca"
 	//
-	flagRootPath     = "root"
+	flagBackendPath     = "backend"
 	flagTemplatePath = "template"
 	//
 	flagAccessPolicyFormat = "access-policy-format"
 	flagAccessPolicyPath   = "access-policy"
+	//
+	flagCachePolicyFormat = "cache-policy-format"
+	flagCachePolicyPath   = "cache-policy"
 	//
 	flagTimeoutRead  = "timeout-read"
 	flagTimeoutWrite = "timeout-write"
@@ -144,7 +160,7 @@ const (
 	flagLogPath = "log"
 )
 
-type File struct {
+type FileDescription struct {
 	ModTime string
 	Size    int64
 	Type    string
@@ -153,17 +169,18 @@ type File struct {
 
 func initFlags(flag *pflag.FlagSet) {
 	flag.String(flagPublicLocation, "", "the public location of the server used for redirects")
-	flag.StringP(flagListenAddr, "a", ":8080", "address that iceberg will listen on")
-	flag.String(flagRedirectAddr, "", "address that iceberg will listen to and redirect requests to the public location")
+	flag.StringP(flagListenAddress, "a", ":8080", "address that iceberg will listen on")
+	flag.String(flagRedirectAddress, "", "address that iceberg will listen to and redirect requests to the public location")
 	flag.String(flagServerCert, "", "path to server public cert")
 	flag.String(flagServerKey, "", "path to server private key")
 	flag.String(flagClientCAFormat, "pkcs7", "format of the CA bundle for client authentication, either pkcs7 or pem")
 	flag.String(flagClientCA, "", "path to CA bundle for client authentication")
-	flag.StringP(flagRootPath, "r", "", "path to the document root served")
+	flag.StringP(flagBackendPath, "", "path to the backend, either file, https, or s3")
 	flag.StringP(flagTemplatePath, "t", "", "path to the template file used during directory listing")
 	flag.StringP(flagLogPath, "l", "-", "path to the log output.  Defaults to stdout.")
 	flag.String(flagBehaviorNotFound, BehaviorNone, "default behavior when a file is not found.  One of: "+strings.Join(Behaviors, ","))
-	initPolicyFlags(flag)
+	initAccessPolicyFlags(flag)
+	initCachePolicyFlags(flag)
 	initTimeoutFlags(flag)
 	initTLSFlags(flag)
 }
@@ -180,9 +197,14 @@ func initTLSFlags(flag *pflag.FlagSet) {
 	flag.String(flagTLSCurvePreferences, strings.Join(DefaultCurveIDs, ","), "curve preferences")
 }
 
-func initPolicyFlags(flag *pflag.FlagSet) {
-	flag.StringP(flagAccessPolicyFormat, "f", "json", "format of the policy file")
-	flag.StringP(flagAccessPolicyPath, "p", "", "path to the policy file.")
+func initAccessPolicyFlags(flag *pflag.FlagSet) {
+	flag.String(flagAccessPolicyFormat, "json", "format of the access policy file")
+	flag.String(flagAccessPolicyPath, "", "path to the accesss policy file.")
+}
+
+func initCachePolicyFlags(flag *pflag.FlagSet) {
+	flag.String(flagCachePolicyFormat, "json", "format of the cache policy file")
+	flag.String(flagCachePolicyPath, "", "path to the cache policy file.")
 }
 
 func initViper(cmd *cobra.Command) (*viper.Viper, error) {
@@ -197,11 +219,11 @@ func initViper(cmd *cobra.Command) (*viper.Viper, error) {
 }
 
 func checkConfig(v *viper.Viper) error {
-	addr := v.GetString(flagListenAddr)
+	addr := v.GetString(flagListenAddress)
 	if len(addr) == 0 {
 		return fmt.Errorf("listen address is missing")
 	}
-	redirectAddress := v.GetString(flagRedirectAddr)
+	redirectAddress := v.GetString(flagRedirectAddress)
 	if len(redirectAddress) > 0 {
 		publicLocation := v.GetString(flagPublicLocation)
 		if len(publicLocation) == 0 {
@@ -301,26 +323,29 @@ func checkTLSConfig(v *viper.Viper) error {
 			return fmt.Errorf("invalid curve preference %q", curveID)
 		}
 	}
-	/*
-		maxVersionIndex := stringSliceContains
-		if maxVersionIndex == -1 {
-			return fmt.Errorf("invalid maximum TLS version %q", maxVersion)
-		}
-		if minVersionIndex > maxVersionIndex {
-			return fmt.Errorf("invalid TLS versions, minium version %q is greater than maximum version %q", minVersion, maxVersion)
-		}
-	*/
 	return nil
 }
 
 func checkAccessPolicyConfig(v *viper.Viper) error {
-	acessPolicyFormat := v.GetString(flagAccessPolicyFormat)
-	if len(acessPolicyFormat) == 0 {
+	accessPolicyFormat := v.GetString(flagAccessPolicyFormat)
+	if len(accessPolicyFormat) == 0 {
 		return fmt.Errorf("access policy format is missing")
 	}
-	acessPolicyPath := v.GetString(flagAccessPolicyPath)
-	if len(acessPolicyPath) == 0 {
+	accessPolicyPath := v.GetString(flagAccessPolicyPath)
+	if len(accessPolicyPath) == 0 {
 		return fmt.Errorf("access policy path is missing")
+	}
+	return nil
+}
+
+func checkCachePolicyConfig(v *viper.Viper) error {
+	cachePolicyFormat := v.GetString(flagCachePolicyFormat)
+	if len(cachePolicyFormat) == 0 {
+		return fmt.Errorf("cache policy format is missing")
+	}
+	cachePolicyPath := v.GetString(flagCachePolicyPath)
+	if len(cachePolicyPath) == 0 {
+		return fmt.Errorf("cache policy path is missing")
 	}
 	return nil
 }
@@ -397,7 +422,7 @@ func main() {
 	}
 
 	validateAccessPolicyCommand := &cobra.Command{
-		Use:                   `validate-access-policy [--access-policy POLICY_FILE] [--access-policy-format POLICY_FORMAT]`,
+		Use:                   `validate-access-policy [--access-policy ACCESS_POLICY_FILE] [--access-policy-format ACCESS_POLICY_FORMAT]`,
 		DisableFlagsInUseLine: true,
 		Short:                 "validate the iceberg access policy file",
 		SilenceErrors:         true,
@@ -431,6 +456,41 @@ func main() {
 	}
 	initFlags(validateAccessPolicyCommand.Flags())
 
+	validateCachePolicyCommand := &cobra.Command{
+		Use:                   `validate-cache-policy [--cache-policy CACHE_POLICY_FILE] [--cache-policy-format CACHE_POLICY_FORMAT]`,
+		DisableFlagsInUseLine: true,
+		Short:                 "validate the iceberg cache policy file",
+		SilenceErrors:         true,
+		SilenceUsage:          true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			v, err := initViper(cmd)
+			if err != nil {
+				return fmt.Errorf("error initializing viper: %w", err)
+			}
+
+			if len(args) > 1 {
+				return cmd.Usage()
+			}
+
+			if errConfig := checkCachePolicyConfig(v); errConfig != nil {
+				return errConfig
+			}
+
+			cachePolicyDocument, err := policy.ParseCachePolicy(v.GetString(flagCachePolicyPath), v.GetString(flagCachePolicyFormat))
+			if err != nil {
+				return fmt.Errorf("error loading policy: %w", err)
+			}
+
+			err = cachePolicyDocument.Validate()
+			if err != nil {
+				return fmt.Errorf("error validating policy: %w", err)
+			}
+
+			return nil
+		},
+	}
+	initFlags(validateCachePolicyCommand.Flags())
+
 	serveCommand := &cobra.Command{
 		Use:                   `serve [flags]`,
 		DisableFlagsInUseLine: true,
@@ -456,12 +516,14 @@ func main() {
 				return fmt.Errorf("error initializing logger: %w", err)
 			}
 
-			listenAddress := v.GetString(flagListenAddr)
-			redirectAddress := v.GetString(flagRedirectAddr)
+			listenAddress := v.GetString(flagListenAddress)
+			redirectAddress := v.GetString(flagRedirectAddress)
 			publicLocation := v.GetString(flagPublicLocation)
 			rootPath := v.GetString(flagRootPath)
 
 			root := afero.NewBasePathFs(afero.NewReadOnlyFs(afero.NewOsFs()), rootPath)
+
+			cache := cachepkg.New(cachepkg.NoExpiration, 15*time.Minute)
 
 			directoryListingTemplate, err := loadTemplate(v.GetString(flagTemplatePath))
 			if err != nil {
@@ -470,12 +532,22 @@ func main() {
 
 			accessPolicyDocument, err := policy.ParseAccessPolicy(v.GetString(flagAccessPolicyPath), v.GetString(flagAccessPolicyFormat))
 			if err != nil {
-				return fmt.Errorf("error loading policy: %w", err)
+				return fmt.Errorf("error loading access policy: %w", err)
 			}
 
 			err = accessPolicyDocument.Validate()
 			if err != nil {
-				return fmt.Errorf("error validating policy: %w", err)
+				return fmt.Errorf("error validating access policy: %w", err)
+			}
+
+			cachePolicyDocument, err := policy.ParseCachePolicy(v.GetString(flagCachePolicyPath), v.GetString(flagCachePolicyFormat))
+			if err != nil {
+				return fmt.Errorf("error loading cache policy: %w", err)
+			}
+
+			err = cachePolicyDocument.Validate()
+			if err != nil {
+				return fmt.Errorf("error validating cache policy: %w", err)
 			}
 
 			serverKeyPair, err := tls.LoadX509KeyPair(v.GetString(flagServerCert), v.GetString(flagServerKey))
@@ -505,14 +577,18 @@ func main() {
 				ErrorLog:     log.WrapStandardLogger(logger),
 				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					//
+					//now := time.Now()
+					//
 					icebergTraceID := newTraceID()
+					//
+					fields := map[string]interface{}{
+						"iceberg_trace_id": icebergTraceID,
+						"url":              r.URL.String(),
+					}
 					//
 					peerCertificates := r.TLS.PeerCertificates
 					if len(peerCertificates) == 0 {
-						_ = logger.Log("Missing client certificate", map[string]interface{}{
-							"iceberg_trace_id": icebergTraceID,
-							"url":              r.URL.String(),
-						})
+						_ = logger.Log("Missing client certificate", fields)
 						http.Error(w, "Missing client certificate", http.StatusBadRequest)
 						return
 					}
@@ -526,22 +602,18 @@ func main() {
 						KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 					})
 					if err != nil {
-						_ = logger.Log("Certificate denied", map[string]interface{}{
-							"iceberg_trace_id": icebergTraceID,
-							"url":              r.URL.String(),
-							"error":            err.Error(),
-							"subjects":         certs.Subjects(peerCertificates),
-							"issuers":          certs.Issuers(peerCertificates),
-						})
+						_ = logger.Log("Certificate denied", merge(fields, map[string]interface{}{
+							"error":    err.Error(),
+							"subjects": certs.Subjects(peerCertificates),
+							"issuers":  certs.Issuers(peerCertificates),
+						}))
 						http.Error(w, "Could not verify client certificate", http.StatusForbidden)
 						return
 					} else {
-						_ = logger.Log("Certificate verified", map[string]interface{}{
-							"iceberg_trace_id": icebergTraceID,
-							"url":              r.URL.String(),
-							"subjects":         certs.Subjects(peerCertificates),
-							"issuers":          certs.Issuers(peerCertificates),
-						})
+						_ = logger.Log("Certificate verified", merge(fields, map[string]interface{}{
+							"subjects": certs.Subjects(peerCertificates),
+							"issuers":  certs.Issuers(peerCertificates),
+						}))
 					}
 					//
 					user := &policy.User{
@@ -550,55 +622,64 @@ func main() {
 						//Subject: r.TLS.PeerCertificates[0].Subject,
 					}
 					//
-					_ = logger.Log("Request", map[string]interface{}{
-						"url":              r.URL.String(),
-						"user_dn":          user.DistinguishedName(),
-						"source":           r.RemoteAddr,
-						"referer":          r.Header.Get("referer"),
-						"host":             r.Host,
-						"method":           r.Method,
-						"iceberg_trace_id": icebergTraceID,
-						"tls_version":      getTLSVersion(r),
-					})
+					_ = logger.Log("Request", merge(fields, map[string]interface{}{
+						"user_dn":     user.DistinguishedName(),
+						"source":      r.RemoteAddr,
+						"referer":     r.Header.Get("referer"),
+						"host":        r.Host,
+						"method":      r.Method,
+						"tls_version": getTLSVersion(r),
+					}))
 
 					// Get path from URL
 					p := server.TrimTrailingForwardSlash(server.CleanPath(r.URL.Path))
 
 					// If path is not clean
 					if !server.CheckPath(p) {
-						_ = logger.Log("Invalid path", map[string]interface{}{
-							"user_dn":          user.DistinguishedName(),
-							"iceberg_trace_id": icebergTraceID,
-							"url":              r.URL.String(),
-							"path":             p,
-						})
+						_ = logger.Log("Invalid path", merge(fields, map[string]interface{}{
+							"user_dn": user.DistinguishedName(),
+							"path":    p,
+						}))
 						http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 						return
 					}
 
 					if !accessPolicyDocument.Evaluate(p, user) {
-						_ = logger.Log("Access denied", map[string]interface{}{
-							"user_dn":          user.DistinguishedName(),
-							"iceberg_trace_id": icebergTraceID,
-							"url":              r.URL.String(),
-						})
+						_ = logger.Log("Access denied", merge(fields, map[string]interface{}{
+							"user_dn": user.DistinguishedName(),
+						}))
 						http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 						return
 					} else {
-						_ = logger.Log("Access allowed", map[string]interface{}{
-							"user_dn":          user.DistinguishedName(),
-							"iceberg_trace_id": icebergTraceID,
-							"url":              r.URL.String(),
-						})
+						_ = logger.Log("Access allowed", merge(fields, map[string]interface{}{
+							"user_dn": user.DistinguishedName(),
+						}))
+					}
+
+					cacheFile, cacheFileExpires, cacheFileDuration := cachePolicyDocument.Evaluate(p)
+					if cacheFile {
+						_ = logger.Log("Cached file", fields)
+						foo, found := cache.Get(p)
+						if found {
+							_ = logger.Log("Cache hit", fields)
+							if f, ok := foo.(struct {
+								Info os.FileInfo
+								Data []byte
+							}); ok {
+								server.ServeData(w, r, p, f.Info.ModTime(), true, bytes.NewReader(f.Data))
+								return
+							}
+						} else {
+							_ = logger.Log("Cache Miss", fields)
+						}
 					}
 
 					fi, err := root.Stat(p)
 					if err != nil {
 						if os.IsNotExist(err) {
-							_ = logger.Log("Not found", map[string]interface{}{
-								"path":             p,
-								"iceberg_trace_id": icebergTraceID,
-							})
+							_ = logger.Log("Not found", merge(fields, map[string]interface{}{
+								"path": p,
+							}))
 							if redirectNotFound {
 								http.Redirect(w, r, publicLocation, http.StatusSeeOther)
 								return
@@ -606,10 +687,9 @@ func main() {
 							http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 							return
 						}
-						_ = logger.Log("Error stating file", map[string]interface{}{
-							"path":             p,
-							"iceberg_trace_id": icebergTraceID,
-						})
+						_ = logger.Log("Error stating file", merge(fields, map[string]interface{}{
+							"path": p,
+						}))
 						http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 						return
 					}
@@ -617,31 +697,29 @@ func main() {
 						indexPath := filepath.Join(p, "index.html")
 						indexFileInfo, err := root.Stat(indexPath)
 						if err != nil && !os.IsNotExist(err) {
-							_ = logger.Log("Error stating index file", map[string]interface{}{
-								"path":             indexPath,
-								"iceberg_trace_id": icebergTraceID,
-							})
+							_ = logger.Log("Error stating index file", merge(fields, map[string]interface{}{
+								"path": indexPath,
+							}))
 							http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 							return
 						}
 						if os.IsNotExist(err) || indexFileInfo.IsDir() {
 							fileInfos, err := afero.ReadDir(root, p)
 							if err != nil {
-								_ = logger.Log("Error reading directory", map[string]interface{}{
-									"path":             p,
-									"iceberg_trace_id": icebergTraceID,
-								})
+								_ = logger.Log("Error reading directory", merge(fields, map[string]interface{}{
+									"path": p,
+								}))
 								http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 								return
 							}
 							//
-							files := make([]File, 0, len(fileInfos))
+							files := make([]FileDescription, 0, len(fileInfos))
 							for _, fi := range fileInfos {
 								fileType := "File"
 								if fi.IsDir() {
 									fileType = "Directory"
 								}
-								files = append(files, File{
+								files = append(files, FileDescription{
 									ModTime: fi.ModTime().In(time.UTC).Format(time.RFC3339),
 									Size:    fi.Size(),
 									Path:    filepath.Join(p, fi.Name()),
@@ -679,7 +757,7 @@ func main() {
 							server.ServeTemplate(w, r, directoryListingTemplate, struct {
 								Up        string
 								Directory string
-								Files     []File
+								Files     []FileDescription
 							}{
 								Up:        filepath.Dir(p),
 								Directory: p,
@@ -688,6 +766,39 @@ func main() {
 							return
 						}
 						server.ServeFile(w, r, root, indexPath, time.Time{}, false, nil)
+						return
+					}
+					if cacheFile {
+						fd, err := afero.ReadFile(root, p)
+						if err != nil {
+							_, _ = fmt.Fprintln(os.Stderr, fmt.Errorf("error opening file from path %q: %w", p, err).Error())
+							http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+							return
+						}
+						if cacheFileExpires {
+							_ = logger.Log("Caching file", merge(fields, map[string]interface{}{
+								"duration": cacheFileDuration,
+							}))
+							cache.Set(
+								p,
+								struct {
+									Info os.FileInfo
+									Data []byte
+								}{Info: fi, Data: fd},
+								time.Duration(cacheFileDuration),
+							)
+						} else {
+							_ = logger.Log("Caching file", fields)
+							cache.Set(
+								p,
+								struct {
+									Info os.FileInfo
+									Data []byte
+								}{Info: fi, Data: fd},
+								cachepkg.NoExpiration,
+							)
+						}
+						server.ServeData(w, r, p, fi.ModTime(), true, bytes.NewReader(fd))
 						return
 					}
 					server.ServeFile(w, r, root, p, fi.ModTime(), true, nil)
